@@ -21,10 +21,12 @@ import { useJudge } from '../../../hooks/useJudge';
 import {
   AppsScriptError,
   getEvent,
+  getJudges,
   getRound,
   submitRound,
 } from '../../../lib/apps-script';
 import {
+  contestantMatchesTarget,
   FINAL_SCORE_DEFAULT,
   FINAL_SCORE_MAX,
   isRoundInteractive,
@@ -34,6 +36,7 @@ import {
   ROUNDS,
   type Contestant,
   type FinalEntry,
+  type JudgeVoteTarget,
   type PassFailEntry,
   type Round,
   type RoundLifecycle,
@@ -65,6 +68,12 @@ export default function RoundPage() {
   // 시트의 `1.대회정보` 라운드별 대회 상태. 'open'으로 낙관적 시작 — 실패해도
   // 채점 페이지가 막히지 않도록 한다(시트 일시적 장애 시 운영 지속).
   const [lifecycle, setLifecycle] = useState<RoundLifecycle>('open');
+  // 본인의 `대상` (모두/리더/팔로워) — 매 로드마다 시트에서 fresh 하게 가져온다.
+  // localStorage 의 voteTarget 이 legacy(undefined) 이거나 운영자가 시트에서
+  // 변경한 경우에도 즉시 반영되도록 한다. 초기값은 localStorage 또는 'all'.
+  const [voteTarget, setVoteTarget] = useState<JudgeVoteTarget>(
+    judge?.voteTarget ?? 'all',
+  );
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -75,10 +84,17 @@ export default function RoundPage() {
       getRound(round, competition?.masterFileId, judge?.id),
       // 라운드 상태도 함께 갱신해, 운영자가 시트에서 'Close'로 바꾸면 즉시 반영.
       getEvent(competition?.masterFileId).catch(() => null),
+      // 본인의 `대상` 컬럼을 fresh 하게 — legacy localStorage 호환 + 시트
+      // 변경 즉시 반영. 실패 시 기존 값 유지(채점 페이지 자체는 막지 않음).
+      getJudges(competition?.masterFileId).catch(() => null),
     ])
-      .then(([cs, ev]) => {
+      .then(([cs, ev, judges]) => {
         if (cancelled) return;
         if (ev) setLifecycle(ev.roundStatus[round]);
+        if (judges) {
+          const me = judges.find((j) => j.id === judge.id);
+          if (me) setVoteTarget(me.voteTarget ?? 'all');
+        }
         setLoaded({ kind: 'ready', contestants: cs });
       })
       .catch((err: unknown) => {
@@ -174,6 +190,7 @@ export default function RoundPage() {
             sheetId={competition?.masterFileId}
             maxPrelimVotes={judge.maxPrelimVotes}
             maxSemiVotes={judge.maxSemiVotes}
+            voteTarget={voteTarget}
             lifecycle={lifecycle}
           />
         </>
@@ -219,6 +236,7 @@ function RoundBody({
   sheetId,
   maxPrelimVotes,
   maxSemiVotes,
+  voteTarget,
   lifecycle,
 }: {
   round: Round;
@@ -227,13 +245,20 @@ function RoundBody({
   sheetId?: string;
   maxPrelimVotes?: number;
   maxSemiVotes?: number;
+  voteTarget: JudgeVoteTarget;
   lifecycle: RoundLifecycle;
 }) {
   const toastApi = useToasts();
+  // `2.심사위원` 의 `대상` 컬럼에 따라 본인 채점 대상만 화면에 노출.
+  // 'all' = 전부, 'leader' = 리더만, 'follower' = 팔로워만. 모든 라운드 동일 적용.
+  const visible = useMemo(
+    () => contestants.filter((c) => contestantMatchesTarget(c.role, voteTarget)),
+    [contestants, voteTarget],
+  );
   if (round === 'final') {
     return (
       <FinalBody
-        contestants={contestants}
+        contestants={visible}
         judgeId={judgeId}
         sheetId={sheetId}
         lifecycle={lifecycle}
@@ -245,7 +270,7 @@ function RoundBody({
   return (
     <PassFailBody
       round={round}
-      contestants={contestants}
+      contestants={visible}
       judgeId={judgeId}
       sheetId={sheetId}
       maxVotes={maxVotes}
@@ -482,7 +507,6 @@ function PassFailBody({
                     style={{ color: 'var(--jnj-text-secondary)', margin: 0 }}
                   >
                     {c.name1}
-                    {c.name2 ? ` · ${c.name2}` : ''}
                   </div>
                 </div>
               </div>
@@ -752,7 +776,6 @@ function FinalBody({
                       style={{ color: 'var(--jnj-text-secondary)' }}
                     >
                       {c.name1}
-                      {c.name2 ? ` · ${c.name2}` : ''}
                     </div>
                   </div>
                 </div>

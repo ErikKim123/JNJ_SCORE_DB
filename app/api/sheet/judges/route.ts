@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { Judge } from '../../../../lib/sheet-schema';
+import { parseVoteTarget } from '../../../../lib/sheet-schema';
 import { fetchSheetTab, parseCsvLine } from '../../../../lib/sheet-fetch';
 
 // 대회 001 원본시트 — dev fallback. 운영에서는 /enter 가 선택된 대회의
@@ -37,8 +38,10 @@ function parseJudges(csv: string, values?: unknown[][]): Judge[] {
 // Sheet col layout (2.심사위원):
 //   0=번호  1=심사위원명  2=예명  3=장르  4=소속  5=경력
 //   6=연락처  7=이메일  8=비고  9=예선투표최대수  10=본선투표최대수
+//   11=대상 (모두/리더/팔로워 — 본인이 채점할 참가자 역할 필터)
 const COL_PRELIM_MAX = 9;
 const COL_SEMI_MAX = 10;
+const COL_VOTE_TARGET = 11;
 
 function parseInteger(raw: unknown): number | undefined {
   const v = String(raw ?? '').trim();
@@ -63,6 +66,7 @@ function parseJudgesFromCsv(csv: string): Judge[] {
       active: true,
       maxPrelimVotes: parseInteger(cols[COL_PRELIM_MAX]),
       maxSemiVotes: parseInteger(cols[COL_SEMI_MAX]),
+      voteTarget: parseVoteTarget(cols[COL_VOTE_TARGET]),
     });
   }
   return judges;
@@ -80,6 +84,9 @@ function parseJudgesFromValues(values: unknown[][]): Judge[] {
       active: true,
       maxPrelimVotes: parseInteger(row?.[COL_PRELIM_MAX]),
       maxSemiVotes: parseInteger(row?.[COL_SEMI_MAX]),
+      voteTarget: parseVoteTarget(
+        row?.[COL_VOTE_TARGET] != null ? String(row[COL_VOTE_TARGET]) : undefined,
+      ),
     });
   }
   return judges;

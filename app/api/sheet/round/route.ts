@@ -104,7 +104,11 @@ function parseContestants(
   const leaderIdx = findCol(headers, ['대표자명', '대표자', '리더']);
   // Sheet uses "역활" (intentional typo of 역할 in source) — accept both.
   const roleIdx = findCol(headers, ['역활', '역할']);
+  // 시트 업데이트(2026-05): 표시용 `사진` 컬럼은 비어있고(또는 `#REF!`),
+  // 실제 이미지 URL 은 `사진원본` 컬럼(Google Drive 공유 링크)에 들어온다.
+  // 둘 다 찾아서 유효한 URL 을 우선 사용한다.
   const photoIdx = findCol(headers, ['사진', '사진 URL', 'photo']);
+  const photoOriginalIdx = findCol(headers, ['사진원본', '사진 원본', '원본사진']);
   // Auto-computed outcome column (final pass/fail by sheet formulas).
   const outcomeIdx = headers.findIndex((h) => h.startsWith(outcomeCol));
   // Per-judge VOTE column for prelim/semi (mirrors Apps Script logic).
@@ -145,10 +149,11 @@ function parseContestants(
     const name2 = (leaderIdx >= 0 ? cols[leaderIdx] : '')?.trim() ?? '';
     const role =
       roleIdx >= 0 ? cols[roleIdx]?.trim() || undefined : undefined;
-    const rawPhoto =
-      photoIdx >= 0 ? cols[photoIdx]?.trim() || '' : '';
-    // Accept full URLs or =IMAGE("url") formula leftovers; ignore otherwise.
-    const photoUrl = /^https?:\/\//i.test(rawPhoto) ? rawPhoto : undefined;
+    // `사진` 우선 → 비어있거나 `#REF!` 면 `사진원본`(Drive URL) 폴백.
+    const photoUrl = pickPhotoUrl(
+      photoIdx >= 0 ? cols[photoIdx] : undefined,
+      photoOriginalIdx >= 0 ? cols[photoOriginalIdx] : undefined,
+    );
     // Per-judge VOTE column policy (strict): ONLY 'O' → 'pass' (VOTE ON).
     // Everything else ('X', empty, 'READY', anything) → 'fail' (VOTE OFF).
     // 'absent' (Non) on the auto-outcome column still wins to lock the row.
@@ -187,6 +192,34 @@ function parseContestants(
     });
   }
   return out;
+}
+
+// 사진 URL 선택 + 정규화. 시트 업데이트로 표시용 `사진` 컬럼이 비고
+// `사진원본`(Drive 공유 링크)만 채워지는 경우가 생겼다. 두 후보를 순서대로
+// 검사해 첫 번째로 유효한 URL 을 반환한다. Drive `/file/d/{ID}/view` 형식은
+// `<img>` 에 그대로 박으면 동작하지 않으므로 `lh3.googleusercontent.com/d/{ID}`
+// (공개 파일에 대해 인증 없이 이미지 바이트를 반환, CORS 지원) 로 변환한다.
+function pickPhotoUrl(...candidates: (string | undefined)[]): string | undefined {
+  for (const raw of candidates) {
+    const v = (raw ?? '').trim();
+    if (!v) continue;
+    if (v.toUpperCase() === '#REF!' || v.startsWith('#')) continue;
+    if (!/^https?:\/\//i.test(v)) continue;
+    return normalizeImageUrl(v);
+  }
+  return undefined;
+}
+
+function normalizeImageUrl(url: string): string {
+  // Drive: /file/d/{ID}/view?usp=... → 직접 표시 가능한 image URL.
+  const m1 = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1) return `https://lh3.googleusercontent.com/d/${m1[1]}=w400`;
+  // Drive 단축형: /open?id={ID} 또는 /uc?id={ID}
+  const m2 = url.match(
+    /drive\.google\.com\/(?:open|uc|thumbnail)\?(?:[^#]*&)?id=([a-zA-Z0-9_-]+)/,
+  );
+  if (m2) return `https://lh3.googleusercontent.com/d/${m2[1]}=w400`;
+  return url;
 }
 
 function parseScoreCell(raw: string | undefined): number | null {

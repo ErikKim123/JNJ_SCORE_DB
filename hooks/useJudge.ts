@@ -6,6 +6,8 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
+import type { JudgeVoteTarget } from '../lib/sheet-schema';
+
 const STORAGE_KEY = 'jnj.judge';
 
 export type StoredJudge = {
@@ -15,6 +17,9 @@ export type StoredJudge = {
   // localStorage entries; round pages treat undefined as "no cap".
   maxPrelimVotes?: number;
   maxSemiVotes?: number;
+  // 본인이 채점할 참가자 역할 필터 — `2.심사위원` 시트의 `대상` 컬럼.
+  // 빈값/legacy localStorage → 'all' 로 폴백.
+  voteTarget?: JudgeVoteTarget;
 };
 
 function readJudge(): StoredJudge | null {

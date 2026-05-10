@@ -11,6 +11,13 @@ export const ROUND_LABEL: Record<Round, string> = {
   final: 'FINAL',
 };
 
+// `2.심사위원` 시트의 `대상` 컬럼 → 본인이 투표할 참가자 역할 필터.
+//   all      = 모두 (default — 라더/팔로워 전부 표출)
+//   leader   = 리더만 (팔로워는 화면에서 제외)
+//   follower = 팔로워만 (리더는 화면에서 제외)
+// 시트에 컬럼이 없거나 빈값/오타 → 'all' 로 폴백 (운영 안전성).
+export type JudgeVoteTarget = 'all' | 'leader' | 'follower';
+
 export type Judge = {
   id: string;
   name: string;
@@ -19,7 +26,34 @@ export type Judge = {
   // Optional for back-compat with sheets that don't have these columns.
   maxPrelimVotes?: number;
   maxSemiVotes?: number;
+  // `2.심사위원` 의 `대상` 컬럼 — 화면에 표출/투표할 참가자 역할 필터.
+  voteTarget?: JudgeVoteTarget;
 };
+
+// 시트의 `대상` 셀 값을 정규화. 운영자 자유 입력에 강건하게 한국어/영어 모두 수용.
+export function parseVoteTarget(raw: string | undefined): JudgeVoteTarget {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (!v) return 'all';
+  if (v === '리더' || v === 'leader' || v.includes('리더')) return 'leader';
+  if (v === '팔로워' || v === '팔로어' || v === 'follower' || v.includes('팔로'))
+    return 'follower';
+  return 'all'; // '모두', 'all', 빈값, 미인식 → 전체
+}
+
+// 참가자가 해당 심사위원의 voteTarget 에 해당하는지. 'all' 은 무조건 통과.
+// 참가자 role 이 비어있으면 (솔로 등) 보수적으로 표출 — 누락보다 노출이 안전.
+export function contestantMatchesTarget(
+  role: string | undefined,
+  target: JudgeVoteTarget,
+): boolean {
+  if (target === 'all') return true;
+  if (!role) return true;
+  const r = role.trim().toLowerCase();
+  if (target === 'leader') return r === '리더' || r === 'leader';
+  if (target === 'follower')
+    return r === '팔로워' || r === '팔로어' || r === 'follower';
+  return true;
+}
 
 // `1.대회정보` 시트의 라운드별 "대회 상태" 셀 값.
 // 시트 드롭다운: Prep / Pairing / Open / Live / Calculate Total / Close / Result.

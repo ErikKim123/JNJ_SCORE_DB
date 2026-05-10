@@ -63,6 +63,7 @@ export default function EnterPage() {
       name: judge.name,
       maxPrelimVotes: judge.maxPrelimVotes,
       maxSemiVotes: judge.maxSemiVotes,
+      voteTarget: judge.voteTarget,
     });
     router.push('/event');
   }
