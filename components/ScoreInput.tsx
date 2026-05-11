@@ -106,7 +106,7 @@ export function ScoreInput({
       <div
         id={id}
         role="listbox"
-        aria-label={`${label} 점수 선택 (${FINAL_SCORE_MIN}~${FINAL_SCORE_MAX})`}
+        aria-label={`${label} score selector (${FINAL_SCORE_MIN}~${FINAL_SCORE_MAX})`}
         aria-activedescendant={value !== null ? `${id}-opt-${value}` : undefined}
         className={['jnj-input', invalid ? 'jnj-input--error' : '']
           .filter(Boolean)

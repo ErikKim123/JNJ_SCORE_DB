@@ -46,7 +46,7 @@ export default function EnterPage() {
         setState({
           kind: 'error',
           message:
-            err instanceof Error ? err.message : '심사위원 정보를 불러오지 못했습니다.',
+            err instanceof Error ? err.message : 'Failed to load judges.',
         });
       });
     return () => {
@@ -118,10 +118,10 @@ export default function EnterPage() {
           className="jnj-display"
           style={{ fontSize: 'clamp(40px, 10vw, 72px)', margin: 0 }}
         >
-          심사위원 입장
+          JUDGE LOGIN
         </h1>
         <p className="jnj-body" style={{ color: 'var(--jnj-text-secondary)', margin: 0 }}>
-          본인 이름을 선택하고 로그인하세요.
+          Select your name and log in.
         </p>
       </header>
 
@@ -137,7 +137,7 @@ export default function EnterPage() {
 
         {state.kind === 'ready' && state.judges.length === 0 && (
           <p className="jnj-body" style={{ color: 'var(--jnj-text-secondary)' }}>
-            활성화된 심사위원이 없습니다. 운영자에게 문의하세요.
+            No active judges. Contact the operator.
           </p>
         )}
 
@@ -199,7 +199,7 @@ function LoginFooter({
         onClick={onClick}
         style={{ flex: 1, padding: 'var(--jnj-space-3) var(--jnj-space-5)' }}
       >
-        로그인
+        Log in
       </button>
     </div>
   );
@@ -236,7 +236,7 @@ function ErrorBlock({
         style={{ alignSelf: 'flex-start' }}
         onClick={onRetry}
       >
-        다시 시도
+        Try again
       </button>
     </div>
   );

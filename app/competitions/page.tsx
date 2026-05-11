@@ -37,7 +37,7 @@ export default function CompetitionsPage() {
         if (cancelled) return;
         setState({
           kind: 'error',
-          message: err instanceof Error ? err.message : '대회 목록을 불러오지 못했습니다.',
+          message: err instanceof Error ? err.message : 'Failed to load competitions.',
         });
       });
     return () => {
@@ -89,10 +89,10 @@ export default function CompetitionsPage() {
             margin: 0,
           }}
         >
-          대회 목록
+          COMPETITIONS
         </h1>
         <p className="jnj-body" style={{ color: 'var(--jnj-text-secondary)', margin: 0 }}>
-          참여하실 대회를 선택하세요.
+          Select a competition to join.
         </p>
       </header>
 

@@ -120,9 +120,9 @@ export type RoundStatus = 'ready' | 'pass' | 'fail' | 'absent';
 
 export const ROUND_STATUS_LABEL: Record<RoundStatus, string> = {
   ready: 'READY',
-  pass: '통과',
-  fail: '불합격',
-  absent: '불참',
+  pass: 'PASS',
+  fail: 'FAIL',
+  absent: 'ABSENT',
 };
 
 // Sheet cell value (string) ↔ app status mapping.

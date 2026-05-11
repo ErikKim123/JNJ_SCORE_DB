@@ -44,7 +44,7 @@ export function PassFailToggle({
           active={locked}
           disabled={submitDisabled}
           onClick={() => onSubmit?.()}
-          label={submitting ? '저장중' : locked ? '완료' : '반영'}
+          label={submitting ? 'Saving' : locked ? 'Done' : 'Submit'}
         />
       )}
     </div>

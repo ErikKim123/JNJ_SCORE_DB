@@ -24,7 +24,7 @@ export function NavBar({
   const router = useRouter();
   return (
     <nav
-      aria-label="페이지 네비게이션"
+      aria-label="Page navigation"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -32,26 +32,26 @@ export function NavBar({
       }}
     >
       <IconButton
-        label="이전단계"
+        label="Back"
         disabled={!back}
         onClick={() => back && router.push(back)}
         icon={<BackIcon />}
       />
       <IconButton
-        label="홈"
+        label="Home"
         active={active === 'home'}
         onClick={() => router.push('/')}
         icon={<HomeIcon />}
       />
       <IconButton
-        label="갱신"
+        label="Refresh"
         loading={loading}
         disabled={loading || !onRefresh}
         onClick={() => onRefresh?.()}
         icon={<RefreshIcon spinning={loading} />}
       />
       <IconButton
-        label="대회목록"
+        label="Competitions"
         active={active === 'competitions'}
         onClick={() => router.push('/competitions')}
         icon={<TrophyIcon />}

@@ -209,8 +209,8 @@ function LifecycleBanner({
   // OPEN 만 "시작 전 안내"(중립 톤). 그 외 비-LIVE 상태는 입력 잠금(경고 톤).
   const isOpen = lifecycle === 'open';
   const message = isOpen
-    ? `${ROUND_LABEL[round]} 라운드가 아직 시작 전(${ROUND_LIFECYCLE_LABEL[lifecycle]})입니다. 운영자가 시트에서 'Live'로 변경하면 갱신 후 입력하세요.`
-    : `${ROUND_LABEL[round]} 라운드 상태가 ${ROUND_LIFECYCLE_LABEL[lifecycle]} 이므로 입력/반영이 비활성화됩니다.`;
+    ? `${ROUND_LABEL[round]} round has not started yet (${ROUND_LIFECYCLE_LABEL[lifecycle]}). Wait for the operator to set it to 'Live', then refresh.`
+    : `${ROUND_LABEL[round]} round is ${ROUND_LIFECYCLE_LABEL[lifecycle]} — input and submission are locked.`;
   return (
     <div
       role="status"
@@ -374,7 +374,7 @@ function PassFailBody({
     ) {
       push(
         'error',
-        `투표 한도(${cap}) 초과 — 다른 참가자의 VOTE를 OFF로 돌린 뒤 다시 시도하세요.`,
+        `Vote cap (${cap}) exceeded — turn OFF another contestant's vote first.`,
       );
       return;
     }
@@ -385,7 +385,7 @@ function PassFailBody({
     if (submitBlocked) {
       push(
         'error',
-        `시트의 대회 상태가 ${ROUND_LIFECYCLE_LABEL[lifecycle]} 이므로 반영할 수 없습니다 (OPEN/LIVE 에서만 가능).`,
+        `Round is ${ROUND_LIFECYCLE_LABEL[lifecycle]} — submission is only allowed in OPEN/LIVE.`,
       );
       return;
     }
@@ -400,7 +400,7 @@ function PassFailBody({
       });
     }
     if (entries.length === 0) {
-      push('error', '반영할 참가자가 없습니다.');
+      push('error', 'No contestants to submit.');
       return;
     }
     setSubmitState({ kind: 'submitting' });
@@ -476,38 +476,33 @@ function PassFailBody({
                 <ContestantAvatar
                   photoUrl={c.photoUrl}
                   number={c.number}
-                  size={48}
+                  size={56}
                 />
-                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div
+                <div
+                  style={{
+                    minWidth: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--jnj-space-2)',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--jnj-space-2)',
-                      flexWrap: 'wrap',
+                      fontFamily: 'var(--jnj-font-display)',
+                      fontSize: 'clamp(28px, 6vw, 36px)',
+                      fontWeight: 500,
+                      lineHeight: 1,
+                      letterSpacing: '-0.01em',
                     }}
                   >
-                    <span
-                      style={{
-                        fontFamily: 'var(--jnj-font-text-medium)',
-                        fontSize: 'var(--jnj-size-h3)',
-                        fontWeight: 500,
-                      }}
-                    >
-                      #{c.number}
-                    </span>
-                    {c.role && <RoleBadge role={c.role} />}
-                    {/* Hide 통과/READY/불합격 badges — only surface 불참 for visual disability cue. */}
-                    {displayedStatus === 'absent' && (
-                      <StatusBadge value={displayedStatus} />
-                    )}
-                  </div>
-                  <div
-                    className="jnj-caption"
-                    style={{ color: 'var(--jnj-text-secondary)', margin: 0 }}
-                  >
-                    {c.name1}
-                  </div>
+                    #{c.number}
+                  </span>
+                  {c.role && <RoleBadge role={c.role} />}
+                  {/* Hide PASS/READY/FAIL badges — only surface ABSENT for visual disability cue. */}
+                  {displayedStatus === 'absent' && (
+                    <StatusBadge value={displayedStatus} />
+                  )}
                 </div>
               </div>
               <PassFailToggle
@@ -531,18 +526,18 @@ function PassFailBody({
       <SubmitFooter
         primaryLabel={
           submitBlocked
-            ? `반영 불가 (${ROUND_LIFECYCLE_LABEL[lifecycle]})`
+            ? `Locked (${ROUND_LIFECYCLE_LABEL[lifecycle]})`
             : submitting
               ? 'Saving…'
               : locked
                 ? 'Saved'
-                : `반영 (VOTE ON ${voteOnCount}/${total})`
+                : `Submit (VOTE ON ${voteOnCount}/${total})`
         }
         onPrimary={locked || submitBlocked ? undefined : handleSubmit}
         disabled={submitting || locked || submitBlocked}
         secondary={
           locked
-            ? { label: '수정', onClick: () => setSubmitState({ kind: 'idle' }) }
+            ? { label: 'Edit', onClick: () => setSubmitState({ kind: 'idle' }) }
             : undefined
         }
       />
@@ -648,7 +643,7 @@ function FinalBody({
     if (submitBlocked) {
       push(
         'error',
-        `시트의 대회 상태가 ${ROUND_LIFECYCLE_LABEL[lifecycle]} 이므로 반영할 수 없습니다 (OPEN/LIVE 에서만 가능).`,
+        `Round is ${ROUND_LIFECYCLE_LABEL[lifecycle]} — submission is only allowed in OPEN/LIVE.`,
       );
       return;
     }
@@ -661,7 +656,7 @@ function FinalBody({
         !isValidScore(e.connection) ||
         !isValidScore(e.musicality)
       ) {
-        push('error', `#${c.number} 점수가 비어있습니다.`);
+        push('error', `#${c.number} score is empty.`);
         return;
       }
       entries.push({
@@ -749,34 +744,29 @@ function FinalBody({
                   <ContestantAvatar
                     photoUrl={c.photoUrl}
                     number={c.number}
-                    size={56}
+                    size={64}
                   />
-                  <div style={{ minWidth: 0 }}>
-                    <div
+                  <div
+                    style={{
+                      minWidth: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--jnj-space-2)',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--jnj-space-2)',
-                        flexWrap: 'wrap',
+                        fontFamily: 'var(--jnj-font-display)',
+                        fontSize: 'clamp(32px, 7vw, 44px)',
+                        fontWeight: 500,
+                        lineHeight: 1,
+                        letterSpacing: '-0.01em',
                       }}
                     >
-                      <span
-                        style={{
-                          fontFamily: 'var(--jnj-font-text-medium)',
-                          fontSize: 'var(--jnj-size-h2)',
-                          fontWeight: 500,
-                        }}
-                      >
-                        #{c.number}
-                      </span>
-                      {c.role && <RoleBadge role={c.role} />}
-                    </div>
-                    <div
-                      className="jnj-caption"
-                      style={{ color: 'var(--jnj-text-secondary)' }}
-                    >
-                      {c.name1}
-                    </div>
+                      #{c.number}
+                    </span>
+                    {c.role && <RoleBadge role={c.role} />}
                   </div>
                 </div>
                 <div
@@ -811,7 +801,7 @@ function FinalBody({
                 }}
               >
                 <ScoreInput
-                  label="기본기"
+                  label="Basics"
                   value={entry.basics}
                   invalid={entry.basics !== null && !isValidScore(entry.basics)}
                   disabled={locked || submitting || submitBlocked}
@@ -823,7 +813,7 @@ function FinalBody({
                   }
                 />
                 <ScoreInput
-                  label="연결성"
+                  label="Connection"
                   value={entry.connection}
                   invalid={
                     entry.connection !== null && !isValidScore(entry.connection)
@@ -837,7 +827,7 @@ function FinalBody({
                   }
                 />
                 <ScoreInput
-                  label="음악성"
+                  label="Musicality"
                   value={entry.musicality}
                   invalid={
                     entry.musicality !== null && !isValidScore(entry.musicality)
@@ -859,18 +849,18 @@ function FinalBody({
       <SubmitFooter
         primaryLabel={
           submitBlocked
-            ? `반영 불가 (${ROUND_LIFECYCLE_LABEL[lifecycle]})`
+            ? `Locked (${ROUND_LIFECYCLE_LABEL[lifecycle]})`
             : submitting
               ? 'Saving…'
               : locked
                 ? 'Saved'
-                : `반영 (${validCount}/${total})`
+                : `Submit (${validCount}/${total})`
         }
         onPrimary={locked || submitBlocked ? undefined : handleSubmit}
         disabled={submitting || submitBlocked || (!allValid && !locked)}
         secondary={
           locked
-            ? { label: '수정', onClick: () => setSubmitState({ kind: 'idle' }) }
+            ? { label: 'Edit', onClick: () => setSubmitState({ kind: 'idle' }) }
             : undefined
         }
       />
@@ -933,7 +923,7 @@ function ContestantAvatar({
   };
   if (photoUrl) {
     return (
-      <span style={common} aria-label={`참가자 ${number} 사진`}>
+      <span style={common} aria-label={`Contestant ${number} photo`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={photoUrl}
@@ -951,31 +941,34 @@ function ContestantAvatar({
     );
   }
   return (
-    <span style={common} aria-label={`참가자 ${number}`}>
+    <span style={common} aria-label={`Contestant ${number}`}>
       {number.replace(/^0+/, '') || number}
     </span>
   );
 }
 
 function RoleBadge({ role }: { role: string }) {
-  // 리더 = filled black pill, 팔로워 = outlined, 그 외 (솔로 등) = grey outline.
+  // Leader = filled black pill, Follower = outlined, others (solo, etc.) = grey outline.
   const isLeader = role === '리더' || role.toLowerCase() === 'leader';
   const isFollower = role === '팔로워' || role.toLowerCase() === 'follower';
   let bg = 'transparent';
   let fg = 'var(--jnj-text-secondary)';
   let border = '1px solid var(--jnj-grey-300)';
+  let label = role;
   if (isLeader) {
     bg = 'var(--jnj-text-primary)';
     fg = 'var(--jnj-white)';
     border = '1px solid var(--jnj-text-primary)';
+    label = 'LEADER';
   } else if (isFollower) {
     bg = 'var(--jnj-white)';
     fg = 'var(--jnj-text-primary)';
     border = '1px solid var(--jnj-text-primary)';
+    label = 'FOLLOWER';
   }
   return (
     <span
-      aria-label={`역할 ${role}`}
+      aria-label={`Role ${label}`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -985,12 +978,13 @@ function RoleBadge({ role }: { role: string }) {
         fontFamily: 'var(--jnj-font-text-medium)',
         fontSize: 11,
         fontWeight: 500,
-        letterSpacing: '0.04em',
+        letterSpacing: '0.06em',
         padding: '2px 8px',
         borderRadius: 'var(--jnj-radius-pill)',
+        textTransform: 'uppercase',
       }}
     >
-      {role}
+      {label}
     </span>
   );
 }
@@ -1075,7 +1069,7 @@ function VoteCounter({
             color: 'var(--jnj-text-secondary)',
           }}
         >
-          {round === 'prelim' ? 'Prelim' : 'Semi'} · 남은 투표
+          {round === 'prelim' ? 'Prelim' : 'Semi'} · Votes Left
         </span>
         <span
           style={{
@@ -1143,7 +1137,7 @@ function VoteCounter({
               letterSpacing: '0.04em',
             }}
           >
-            한도 도달
+            Cap Reached
           </span>
         )}
       </div>

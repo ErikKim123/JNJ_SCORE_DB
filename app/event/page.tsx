@@ -155,7 +155,7 @@ function EventBody({ event }: { event: Event }) {
           className="jnj-small"
           style={{ margin: 0, color: 'var(--jnj-text-secondary)' }}
         >
-          현재 라운드: {ROUND_LABEL[event.currentRound]}
+          Current round: {ROUND_LABEL[event.currentRound]}
         </p>
       </section>
     </>
@@ -201,7 +201,7 @@ function RoundEntry({ round, status }: { round: Round; status: RoundLifecycle })
         style={sharedStyle}
         disabled
         aria-disabled="true"
-        title="OPEN 또는 LIVE 상태의 라운드만 진입할 수 있습니다."
+        title="Only OPEN or LIVE rounds can be entered."
       >
         {inner}
       </button>

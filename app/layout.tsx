@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'JNJ VOTE',
-  description: '젝앤질 댄스 컴페티션 채점 앱',
+  description: 'JNJ dance competition scoring app',
 };
 
 export const viewport: Viewport = {

@@ -25,7 +25,7 @@ export default function HomePage() {
           color: 'var(--jnj-grey-400)',
         }}
       >
-        젝앤질 / 2026
+        JNJ / 2026
       </header>
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--jnj-space-6)' }}>
@@ -67,7 +67,7 @@ export default function HomePage() {
           className="jnj-btn jnj-btn-inverse"
           style={{ width: '100%', padding: 'var(--jnj-space-4) var(--jnj-space-6)' }}
         >
-          대회목록 보기
+          View Competitions
         </Link>
         <p
           style={{
@@ -78,7 +78,7 @@ export default function HomePage() {
             textAlign: 'center',
           }}
         >
-          진행 중인 대회를 선택하세요
+          Select an active competition
         </p>
       </footer>
     </main>
