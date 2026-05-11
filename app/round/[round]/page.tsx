@@ -251,8 +251,15 @@ function RoundBody({
   const toastApi = useToasts();
   // `2.심사위원` 의 `대상` 컬럼에 따라 본인 채점 대상만 화면에 노출.
   // 'all' = 전부, 'leader' = 리더만, 'follower' = 팔로워만. 모든 라운드 동일 적용.
+  // 헬퍼(리더)/헬퍼(팔로워) 등 헬퍼 역할은 채점 대상이 아니므로 목록에서 제외.
+  // 시트 값에 보이지 않는 공백/제어문자가 섞일 수 있어 includes 로 관대하게 매칭.
   const visible = useMemo(
-    () => contestants.filter((c) => contestantMatchesTarget(c.role, voteTarget)),
+    () =>
+      contestants.filter(
+        (c) =>
+          !(c.role ?? '').includes('헬퍼') &&
+          contestantMatchesTarget(c.role, voteTarget),
+      ),
     [contestants, voteTarget],
   );
   if (round === 'final') {
@@ -948,19 +955,20 @@ function ContestantAvatar({
 }
 
 function RoleBadge({ role }: { role: string }) {
-  // Leader = filled black pill, Follower = outlined, others (solo, etc.) = grey outline.
+  // Only LEADER/FOLLOWER render — helper rows (헬퍼(리더)/헬퍼(팔로워)) and others stay unbadged.
   const isLeader = role === '리더' || role.toLowerCase() === 'leader';
   const isFollower = role === '팔로워' || role.toLowerCase() === 'follower';
-  let bg = 'transparent';
-  let fg = 'var(--jnj-text-secondary)';
-  let border = '1px solid var(--jnj-grey-300)';
-  let label = role;
+  if (!isLeader && !isFollower) return null;
+  let bg: string;
+  let fg: string;
+  let border: string;
+  let label: string;
   if (isLeader) {
     bg = 'var(--jnj-text-primary)';
     fg = 'var(--jnj-white)';
     border = '1px solid var(--jnj-text-primary)';
     label = 'LEADER';
-  } else if (isFollower) {
+  } else {
     bg = 'var(--jnj-white)';
     fg = 'var(--jnj-text-primary)';
     border = '1px solid var(--jnj-text-primary)';

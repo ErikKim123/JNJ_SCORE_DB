@@ -102,8 +102,8 @@ function parseContestants(
   const numIdx = headers.indexOf('참가번호');
   const teamIdx = findCol(headers, ['팀명/참가자명', '팀명', '참가자명']);
   const leaderIdx = findCol(headers, ['대표자명', '대표자', '리더']);
-  // Sheet uses "역활" (intentional typo of 역할 in source) — accept both.
-  const roleIdx = findCol(headers, ['역활', '역할']);
+  // Sheet header was corrected from "역활" → "역할" (2026-05); accept both for safety.
+  const roleIdx = findCol(headers, ['역할', '역활']);
   // 시트 업데이트(2026-05): 표시용 `사진` 컬럼은 비어있고(또는 `#REF!`),
   // 실제 이미지 URL 은 `사진원본` 컬럼(Google Drive 공유 링크)에 들어온다.
   // 둘 다 찾아서 유효한 URL 을 우선 사용한다.

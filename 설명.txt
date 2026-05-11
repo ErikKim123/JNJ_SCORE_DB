@@ -28,8 +28,8 @@
 
  대회목록시트 : https://docs.google.com/spreadsheets/d/1bRclkuN8fuSfhoSrRUEtBjPPx6TePofxojE72qHV6iU/edit?gid=2102151233#gid=2102151233
  대회 001 원본시트 : https://docs.google.com/spreadsheets/d/1gzX4kidjg4J6Qj5g1ANX9ibdeGaK_KkLTgU6xoQVn80/edit?gid=1162828405#gid=1162828405
- 대회 002 원본시트 : https://docs.google.com/spreadsheets/d/1aCa80GFW7IBhV_Jpm_n5Ur1dHfs_og1m75zlROWDCRg/edit?gid=1162828405#gid=1162828405
- 대회 003 원본시트 : https://docs.google.com/spreadsheets/d/1KhTEk-qrCXoRnj9IiwjBD5NT_CvgzhN0mtYgsXFunjM/edit?gid=1351648420#gid=1351648420
+ 대회 002 원본시트 : https://docs.google.com/spreadsheets/d/1yHpSMCUvqZNqdH2i28jBI0MCFrOaDrhU_jjZFQreHbw/edit?gid=1162828405#gid=1162828405
+ 대회 003 원본시트 : https://docs.google.com/spreadsheets/d/1cqFFHZfFn6ZEFeHZRvHXHhtOdBeinNLRGQ5TNeMtFG8/edit?gid=1162828405#gid=1162828405
 
 
  구글시프레드 시트로 업무를 정리함. 이 시트를 중심으로 화면을 구성하면됨
