@@ -1,13 +1,13 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import { Card } from '../../components/Card';
 import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import { NavBar } from '../../components/NavBar';
-import { useCompetition } from '../../hooks/useCompetition';
+import { setCompetition, useCompetition } from '../../hooks/useCompetition';
 import { setJudge } from '../../hooks/useJudge';
-import type { Judge } from '../../lib/sheet-schema';
+import type { Competition, Judge } from '../../lib/sheet-schema';
 
 type LoadState =
   | { kind: 'loading' }
@@ -15,11 +15,65 @@ type LoadState =
   | { kind: 'error'; message: string };
 
 export default function EnterPage() {
+  return (
+    <Suspense fallback={null}>
+      <EnterPageInner />
+    </Suspense>
+  );
+}
+
+function EnterPageInner() {
   const router = useRouter();
-  const { competition, hydrated } = useCompetition({ requireSelection: true });
+  const searchParams = useSearchParams();
+  const qrCompetitionId = searchParams.get('c');
+  const [qrSyncing, setQrSyncing] = useState<boolean>(Boolean(qrCompetitionId));
+  const { competition, hydrated } = useCompetition({
+    requireSelection: !qrSyncing,
+  });
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // If arrived via QR (?c=JNJ-001), look up the competition and persist it
+  // into localStorage so the rest of the flow keeps working unchanged.
+  useEffect(() => {
+    if (!qrCompetitionId) return;
+    if (competition && competition.id === qrCompetitionId) {
+      setQrSyncing(false);
+      return;
+    }
+    let cancelled = false;
+    fetch('/api/db/competitions', { cache: 'no-store' })
+      .then(async (res) => {
+        const body = (await res.json()) as
+          | { ok: true; data: Competition[] }
+          | { ok: false; error: string };
+        if (cancelled) return;
+        if (!body.ok) {
+          setQrSyncing(false);
+          return;
+        }
+        const match = body.data.find((c) => c.id === qrCompetitionId);
+        if (match) {
+          setCompetition({
+            id: match.id,
+            name: match.name,
+            masterFileId: match.masterFileId,
+          });
+          // Drop the ?c= param and let the page remount so useCompetition
+          // re-reads localStorage with the freshly stored selection.
+          window.location.replace('/enter');
+          return;
+        }
+        setQrSyncing(false);
+      })
+      .catch(() => {
+        if (!cancelled) setQrSyncing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [qrCompetitionId, competition]);
 
   useEffect(() => {
     if (!hydrated || !competition) return;
@@ -66,8 +120,8 @@ export default function EnterPage() {
     router.push('/event');
   }
 
-  if (!hydrated) {
-    return null; // wait for localStorage check / redirect
+  if (!hydrated || qrSyncing) {
+    return null; // wait for localStorage check / QR sync / redirect
   }
 
   return (

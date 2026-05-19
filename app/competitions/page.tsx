@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import { NavBar } from '../../components/NavBar';
+import { QRCodeImg } from '../../components/QRCode';
 import { setCompetition } from '../../hooks/useCompetition';
 import type { Competition } from '../../lib/sheet-schema';
 
@@ -16,6 +17,7 @@ export default function CompetitionsPage() {
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
+  const [qrModal, setQrModal] = useState<Competition | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,12 +124,20 @@ export default function CompetitionsPage() {
           >
             {state.items.map((c) => (
               <li key={c.id}>
-                <CompetitionRow item={c} onClick={() => pick(c)} />
+                <CompetitionRow
+                  item={c}
+                  onClick={() => pick(c)}
+                  onShowQR={() => setQrModal(c)}
+                />
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      {qrModal && (
+        <QRModal item={qrModal} onClose={() => setQrModal(null)} />
+      )}
     </main>
   );
 }
@@ -135,84 +145,225 @@ export default function CompetitionsPage() {
 function CompetitionRow({
   item,
   onClick,
+  onShowQR,
 }: {
   item: Competition;
   onClick: () => void;
+  onShowQR: () => void;
 }) {
   const disabled = !item.masterFileId;
+  const judgeUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/enter?c=${encodeURIComponent(item.id)}`
+      : `/enter?c=${encodeURIComponent(item.id)}`;
   return (
-    <button
-      type="button"
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-      aria-disabled={disabled || undefined}
+    <div
       style={{
-        appearance: 'none',
-        width: '100%',
-        textAlign: 'left',
-        cursor: disabled ? 'not-allowed' : 'pointer',
+        position: 'relative',
         background: 'var(--jnj-white)',
         borderWidth: 1.5,
         borderStyle: 'solid',
         borderColor: 'var(--jnj-grey-300)',
         borderRadius: 'var(--jnj-radius-lg)',
-        padding: 'var(--jnj-space-5)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--jnj-space-2)',
         opacity: disabled ? 0.5 : 1,
         transition: 'var(--jnj-transition)',
+        display: 'flex',
+        alignItems: 'stretch',
       }}
     >
-      <div
+      <button
+        type="button"
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
+        aria-disabled={disabled || undefined}
         style={{
+          appearance: 'none',
+          flex: 1,
+          textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: 'var(--jnj-radius-lg)',
+          padding: 'var(--jnj-space-5)',
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          gap: 'var(--jnj-space-3)',
+          flexDirection: 'column',
+          gap: 'var(--jnj-space-2)',
         }}
       >
-        <span
-          className="jnj-small"
+        <div
           style={{
-            color: 'var(--jnj-text-secondary)',
-            letterSpacing: '0.06em',
-            fontFamily: 'var(--jnj-font-text-medium)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            gap: 'var(--jnj-space-3)',
           }}
         >
-          {item.id}
-        </span>
-        {disabled && (
           <span
             className="jnj-small"
             style={{
-              padding: '2px 8px',
-              borderRadius: 'var(--jnj-radius-pill)',
-              background: 'var(--jnj-grey-200)',
-              color: 'var(--jnj-grey-600)',
+              color: 'var(--jnj-text-secondary)',
+              letterSpacing: '0.06em',
+              fontFamily: 'var(--jnj-font-text-medium)',
             }}
           >
-            Preparing
+            {item.id}
           </span>
-        )}
-      </div>
-      <div
+          {disabled && (
+            <span
+              className="jnj-small"
+              style={{
+                padding: '2px 8px',
+                borderRadius: 'var(--jnj-radius-pill)',
+                background: 'var(--jnj-grey-200)',
+                color: 'var(--jnj-grey-600)',
+              }}
+            >
+              Preparing
+            </span>
+          )}
+        </div>
+        <div
+          style={{
+            fontFamily: 'var(--jnj-font-text-medium)',
+            fontSize: 'var(--jnj-size-h3)',
+            fontWeight: 500,
+            color: 'var(--jnj-text-primary)',
+          }}
+        >
+          {item.name}
+        </div>
+        <div
+          className="jnj-caption"
+          style={{ color: 'var(--jnj-text-secondary)' }}
+        >
+          {formatDate(item.date)}
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={onShowQR}
+        aria-label={`Show judge login QR for ${item.name}`}
+        title="Judge login QR"
         style={{
-          fontFamily: 'var(--jnj-font-text-medium)',
-          fontSize: 'var(--jnj-size-h3)',
-          fontWeight: 500,
-          color: 'var(--jnj-text-primary)',
+          appearance: 'none',
+          background: '#fff',
+          border: 'none',
+          borderLeft: '1px solid var(--jnj-grey-300)',
+          padding: 'var(--jnj-space-3)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderTopRightRadius: 'var(--jnj-radius-lg)',
+          borderBottomRightRadius: 'var(--jnj-radius-lg)',
         }}
       >
-        {item.name}
-      </div>
+        <QRCodeImg value={judgeUrl} size={64} alt={`QR · ${item.id}`} />
+      </button>
+    </div>
+  );
+}
+
+function QRModal({ item, onClose }: { item: Competition; onClose: () => void }) {
+  const judgeUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/enter?c=${encodeURIComponent(item.id)}`
+      : `/enter?c=${encodeURIComponent(item.id)}`;
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--jnj-space-5)',
+        zIndex: 1000,
+      }}
+    >
       <div
-        className="jnj-caption"
-        style={{ color: 'var(--jnj-text-secondary)' }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          color: '#000',
+          borderRadius: 'var(--jnj-radius-lg)',
+          padding: 'var(--jnj-space-6)',
+          maxWidth: 420,
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 'var(--jnj-space-4)',
+        }}
       >
-        {formatDate(item.date)}
+        <div style={{ textAlign: 'center' }}>
+          <div
+            className="jnj-small"
+            style={{ letterSpacing: '0.06em', opacity: 0.6 }}
+          >
+            {item.id}
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--jnj-font-text-medium)',
+              fontSize: 'var(--jnj-size-h3)',
+              fontWeight: 500,
+            }}
+          >
+            {item.name}
+          </div>
+          <div className="jnj-caption" style={{ opacity: 0.7 }}>
+            Judge login QR
+          </div>
+        </div>
+
+        <QRCodeImg value={judgeUrl} size={280} margin={2} alt={`QR · ${item.id}`} />
+
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.7,
+            wordBreak: 'break-all',
+            textAlign: 'center',
+          }}
+        >
+          {judgeUrl}
+        </div>
+
+        <div style={{ display: 'flex', gap: 'var(--jnj-space-2)' }}>
+          <button
+            type="button"
+            className="jnj-btn jnj-btn-secondary jnj-btn-sm"
+            onClick={() => {
+              if (navigator.clipboard) navigator.clipboard.writeText(judgeUrl);
+            }}
+          >
+            Copy link
+          </button>
+          <button
+            type="button"
+            className="jnj-btn jnj-btn-primary jnj-btn-sm"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
       </div>
-    </button>
+    </div>
   );
 }
 
