@@ -94,6 +94,46 @@ export function isRoundInteractive(status: RoundLifecycle): boolean {
   return ROUND_LIFECYCLE_INTERACTIVE.has(status);
 }
 
+// Final-round scoring criteria. Keys match `contests.scoring_items` jsonb
+// values. The judge_votes table stores scores in differently-named columns;
+// see CRITERION_COLUMN below for the wire mapping.
+export const FINAL_CRITERIA = [
+  'fundamentals',
+  'connection',
+  'musicality',
+  'creativity',
+  'crowd_reaction',
+  'showmanship',
+] as const;
+export type FinalCriterion = typeof FINAL_CRITERIA[number];
+
+export const FINAL_CRITERION_LABEL: Record<FinalCriterion, string> = {
+  fundamentals: 'Fundamentals',
+  connection: 'Connection',
+  musicality: 'Musicality',
+  creativity: 'Creativity',
+  crowd_reaction: 'Crowd Reaction',
+  showmanship: 'Showmanship',
+};
+
+// scoring_items key → judge_votes column name. The column names in the DB
+// don't match the keys verbatim (e.g. fundamentals → basic_score) so we
+// translate at the API boundary.
+export const CRITERION_COLUMN: Record<FinalCriterion, string> = {
+  fundamentals: 'basic_score',
+  connection: 'connectivity_score',
+  musicality: 'musicality_score',
+  creativity: 'creativity_score',
+  crowd_reaction: 'crowd_reaction_score',
+  showmanship: 'showmanship_score',
+};
+
+export const DEFAULT_FINAL_CRITERIA: readonly FinalCriterion[] = [
+  'fundamentals',
+  'connection',
+  'musicality',
+];
+
 export type Event = {
   name: string;
   date: string; // ISO 8601
@@ -101,6 +141,9 @@ export type Event = {
   currentRound: Round;
   // Per-round lifecycle from `1.대회정보` (예선/본선/결승 대회 상태).
   roundStatus: Record<Round, RoundLifecycle>;
+  // Active final-round criteria for this competition (defaults to the
+  // original 3 when not configured).
+  finalCriteria: FinalCriterion[];
 };
 
 export type Competition = {
@@ -147,13 +190,9 @@ export type Contestant = {
   // Optional prefill: current sheet value parsed for this round.
   // null = empty cell (treated as ready).
   outcome?: RoundStatus | null;
-  // 결승(final) 라운드 — 본인(심사위원) 이 시트에 입력해 둔 3개 점수.
-  // 갱신 시 휠 picker 가 이 값으로 다시 시드되도록 한다. 셀이 비어있으면 null.
-  finalScores?: {
-    basics: number | null;
-    connection: number | null;
-    musicality: number | null;
-  };
+  // 결승(final) 라운드 — 본인(심사위원) 이 DB에 저장해 둔 점수.
+  // Partial: 비활성 criterion 키는 아예 안 들어오거나 null.
+  finalScores?: Partial<Record<FinalCriterion, number | null>>;
 };
 
 export type PassFailEntry = {
@@ -161,12 +200,11 @@ export type PassFailEntry = {
   status: 'pass' | 'fail' | 'absent';
 };
 
+// Final-round submit payload. Each active criterion gets a 1..FINAL_SCORE_MAX
+// integer. Disabled criteria simply omit the key.
 export type FinalEntry = {
   contestantId: string;
-  basics: number; // 0..FINAL_SCORE_MAX
-  connection: number;
-  musicality: number;
-};
+} & Partial<Record<FinalCriterion, number>>;
 
 // Design Ref: §12 Q2 — final score range is 1..10 (operator request).
 // UI inputs read these constants; total denominator = MAX * 3.
@@ -192,9 +230,16 @@ export type ApiResponse<T> = ApiOk<T> | ApiErr;
 export function isFinalEntry(
   entry: PassFailEntry | FinalEntry,
 ): entry is FinalEntry {
-  return 'basics' in entry;
+  // PassFailEntry has `status`, FinalEntry never does. Use the absence of
+  // `status` to discriminate so disabling 'basics' still works.
+  return !('status' in entry);
 }
 
 export function totalFinalScore(e: FinalEntry): number {
-  return e.basics + e.connection + e.musicality;
+  let sum = 0;
+  for (const k of FINAL_CRITERIA) {
+    const v = e[k];
+    if (typeof v === 'number') sum += v;
+  }
+  return sum;
 }

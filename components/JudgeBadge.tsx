@@ -5,6 +5,25 @@
 
 import * as React from 'react';
 import { useJudge } from '../hooks/useJudge';
+import type { JudgeVoteTarget } from '../lib/sheet-schema';
+
+function targetLabel(t: JudgeVoteTarget | undefined): string {
+  if (t === 'leader') return 'Leader';
+  if (t === 'follower') return 'Follower';
+  return 'All';
+}
+
+function targetBg(t: JudgeVoteTarget | undefined): string {
+  if (t === 'leader') return 'var(--jnj-blue-50, #DBEAFE)';
+  if (t === 'follower') return 'var(--jnj-pink-50, #FCE7F3)';
+  return 'var(--jnj-grey-200)';
+}
+
+function targetFg(t: JudgeVoteTarget | undefined): string {
+  if (t === 'leader') return 'var(--jnj-blue, #1D4ED8)';
+  if (t === 'follower') return 'var(--jnj-pink, #BE185D)';
+  return 'var(--jnj-text-primary)';
+}
 
 export function JudgeBadge(): React.ReactElement | null {
   const { judge, hydrated, logout } = useJudge();
@@ -35,6 +54,19 @@ export function JudgeBadge(): React.ReactElement | null {
         Judge
       </span>
       <span style={{ color: 'var(--jnj-text-primary)' }}>{judge.name}</span>
+      <span
+        style={{
+          padding: '2px var(--jnj-space-2)',
+          borderRadius: 'var(--jnj-radius-pill)',
+          background: targetBg(judge.voteTarget),
+          color: targetFg(judge.voteTarget),
+          fontSize: 'var(--jnj-size-small)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+        }}
+      >
+        {targetLabel(judge.voteTarget)}
+      </span>
       <button
         type="button"
         onClick={logout}

@@ -20,7 +20,7 @@ export default function CompetitionsPage() {
   useEffect(() => {
     let cancelled = false;
     setState({ kind: 'loading' });
-    fetch('/api/sheet/competitions', { cache: 'no-store' })
+    fetch('/api/db/competitions', { cache: 'no-store' })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as
@@ -105,7 +105,7 @@ export default function CompetitionsPage() {
 
         {state.kind === 'ready' && state.items.length === 0 && (
           <p className="jnj-body" style={{ color: 'var(--jnj-text-secondary)' }}>
-            등록된 대회가 없습니다.
+            No competitions registered.
           </p>
         )}
 
@@ -192,7 +192,7 @@ function CompetitionRow({
               color: 'var(--jnj-grey-600)',
             }}
           >
-            준비중
+            Preparing
           </span>
         )}
       </div>
@@ -223,7 +223,7 @@ function formatDate(raw: string): string {
     const [, y1, mo1, d1, y2, mo2, d2] = m;
     return `${y1}-${mo1}-${d1} ~ ${y2}-${mo2}-${d2}`;
   }
-  return raw || '일정 미정';
+  return raw || 'Date TBD';
 }
 
 function ErrorBlock({
@@ -257,7 +257,7 @@ function ErrorBlock({
         style={{ alignSelf: 'flex-start' }}
         onClick={onRetry}
       >
-        다시 시도
+        Retry
       </button>
     </div>
   );

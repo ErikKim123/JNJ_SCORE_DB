@@ -25,9 +25,7 @@ export default function EnterPage() {
     if (!hydrated || !competition) return;
     let cancelled = false;
     setState({ kind: 'loading' });
-    const url = competition.masterFileId
-      ? `/api/sheet/judges?sheetId=${encodeURIComponent(competition.masterFileId)}`
-      : '/api/sheet/judges';
+    const url = `/api/db/judges?competitionId=${encodeURIComponent(competition.id)}`;
     fetch(url, { cache: 'no-store' })
       .then(async (res) => {
         const body = (await res.json()) as

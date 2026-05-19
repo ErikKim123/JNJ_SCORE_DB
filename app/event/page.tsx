@@ -38,7 +38,7 @@ export default function EventPage() {
     if (!hydrated || !compHydrated) return;
     let cancelled = false;
     setState({ kind: 'loading' });
-    getEvent(competition?.masterFileId)
+    getEvent(competition?.id)
       .then((event) => {
         if (cancelled) return;
         setState({ kind: 'ready', event });

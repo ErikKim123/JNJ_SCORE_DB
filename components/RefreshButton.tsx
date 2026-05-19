@@ -5,7 +5,7 @@ import * as React from 'react';
 export function RefreshButton({
   loading,
   onClick,
-  label = '갱신',
+  label = 'Refresh',
 }: {
   loading: boolean;
   onClick: () => void;
@@ -16,7 +16,7 @@ export function RefreshButton({
       type="button"
       onClick={onClick}
       disabled={loading}
-      aria-label="시트에서 다시 불러오기"
+      aria-label="Reload data"
       style={{
         appearance: 'none',
         cursor: loading ? 'wait' : 'pointer',
@@ -48,7 +48,7 @@ export function RefreshButton({
       >
         ↻
       </span>
-      {loading ? '불러오는 중' : label}
+      {loading ? 'Loading' : label}
       <style>{`
         @keyframes jnj-spin {
           from { transform: rotate(0deg); }

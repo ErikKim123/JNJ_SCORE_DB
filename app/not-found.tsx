@@ -27,7 +27,7 @@ export default function NotFound() {
         404
       </h1>
       <p style={{ color: 'var(--jnj-grey-400)', margin: 0 }}>
-        페이지를 찾을 수 없습니다.
+        Page not found.
       </p>
       <Link
         href="/"
@@ -37,7 +37,7 @@ export default function NotFound() {
           textDecoration: 'underline',
         }}
       >
-        홈으로 돌아가기
+        Back to home
       </Link>
     </main>
   );

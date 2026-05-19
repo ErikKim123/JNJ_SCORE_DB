@@ -28,6 +28,7 @@ textarea {
   font-size: 16px;
 }
 
+
 /* Disable text selection on tap-active surfaces (judge cards, toggles) */
 .jnj-no-select {
   -webkit-user-select: none;

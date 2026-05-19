@@ -27,6 +27,8 @@ import {
 } from '../../../lib/apps-script';
 import {
   contestantMatchesTarget,
+  DEFAULT_FINAL_CRITERIA,
+  FINAL_CRITERION_LABEL,
   FINAL_SCORE_DEFAULT,
   FINAL_SCORE_MAX,
   isRoundInteractive,
@@ -35,6 +37,7 @@ import {
   ROUND_STATUS_LABEL,
   ROUNDS,
   type Contestant,
+  type FinalCriterion,
   type FinalEntry,
   type JudgeVoteTarget,
   type PassFailEntry,
@@ -74,6 +77,11 @@ export default function RoundPage() {
   const [voteTarget, setVoteTarget] = useState<JudgeVoteTarget>(
     judge?.voteTarget ?? 'all',
   );
+  // Active final-round criteria for this competition. Defaults to the
+  // original 3; getEvent updates this on load.
+  const [finalCriteria, setFinalCriteria] = useState<FinalCriterion[]>(
+    () => [...DEFAULT_FINAL_CRITERIA],
+  );
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -81,16 +89,19 @@ export default function RoundPage() {
     let cancelled = false;
     setLoaded({ kind: 'loading' });
     Promise.all([
-      getRound(round, competition?.masterFileId, judge?.id),
+      getRound(round, competition?.id, judge?.id),
       // 라운드 상태도 함께 갱신해, 운영자가 시트에서 'Close'로 바꾸면 즉시 반영.
-      getEvent(competition?.masterFileId).catch(() => null),
+      getEvent(competition?.id).catch(() => null),
       // 본인의 `대상` 컬럼을 fresh 하게 — legacy localStorage 호환 + 시트
       // 변경 즉시 반영. 실패 시 기존 값 유지(채점 페이지 자체는 막지 않음).
-      getJudges(competition?.masterFileId).catch(() => null),
+      getJudges(competition?.id).catch(() => null),
     ])
       .then(([cs, ev, judges]) => {
         if (cancelled) return;
-        if (ev) setLifecycle(ev.roundStatus[round]);
+        if (ev) {
+          setLifecycle(ev.roundStatus[round]);
+          if (ev.finalCriteria?.length) setFinalCriteria(ev.finalCriteria);
+        }
         if (judges) {
           const me = judges.find((j) => j.id === judge.id);
           if (me) setVoteTarget(me.voteTarget ?? 'all');
@@ -104,7 +115,7 @@ export default function RoundPage() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, compHydrated, judge, round, competition?.masterFileId, reloadKey]);
+  }, [hydrated, compHydrated, judge, round, competition?.id, reloadKey]);
 
   return (
     <main
@@ -187,11 +198,12 @@ export default function RoundPage() {
             round={round}
             contestants={loaded.contestants}
             judgeId={judge.id}
-            sheetId={competition?.masterFileId}
+            sheetId={competition?.id}
             maxPrelimVotes={judge.maxPrelimVotes}
             maxSemiVotes={judge.maxSemiVotes}
             voteTarget={voteTarget}
             lifecycle={lifecycle}
+            finalCriteria={finalCriteria}
           />
         </>
       )}
@@ -238,6 +250,7 @@ function RoundBody({
   maxSemiVotes,
   voteTarget,
   lifecycle,
+  finalCriteria,
 }: {
   round: Round;
   contestants: Contestant[];
@@ -247,6 +260,7 @@ function RoundBody({
   maxSemiVotes?: number;
   voteTarget: JudgeVoteTarget;
   lifecycle: RoundLifecycle;
+  finalCriteria: FinalCriterion[];
 }) {
   const toastApi = useToasts();
   // `2.심사위원` 의 `대상` 컬럼에 따라 본인 채점 대상만 화면에 노출.
@@ -269,6 +283,7 @@ function RoundBody({
         judgeId={judgeId}
         sheetId={sheetId}
         lifecycle={lifecycle}
+        criteria={finalCriteria}
         {...toastApi}
       />
     );
@@ -328,7 +343,7 @@ function PassFailBody({
     }
     return o;
   }, [contestants]);
-  const { value: draft, setValue: setDraft, clear } = useDraft<PassFailDraft>(
+  const { value: draft, setValue: setDraft } = useDraft<PassFailDraft>(
     draftKey,
     initial,
   );
@@ -415,7 +430,14 @@ function PassFailBody({
       .then((res) => {
         setSubmitState({ kind: 'locked' });
         push('success', `Saved ${res.written}.`);
-        clear();
+        // localStorage 만 비운다 — 메모리상의 draft 는 그대로 유지해 방금 반영된
+        // VOTE ON/OFF 가 토글에 그대로 보이도록 한다. 다음 진입 시엔 시트 outcome
+        // 으로 새로 시드되도록 localStorage 만 제거.
+        try {
+          window.localStorage.removeItem(draftKey);
+        } catch {
+          // ignore
+        }
       })
       .catch((err) => {
         setSubmitState({ kind: 'idle' });
@@ -558,16 +580,15 @@ function PassFailBody({
 // Final scores
 // ─────────────────────────────────────────────────────────────────────────────
 
-type FinalDraft = Record<
-  string,
-  { basics: number | null; connection: number | null; musicality: number | null }
->;
+// Per-contestant draft: a value (or null) for each currently active criterion.
+type FinalDraft = Record<string, Partial<Record<FinalCriterion, number | null>>>;
 
 function FinalBody({
   contestants,
   judgeId,
   sheetId,
   lifecycle,
+  criteria,
   toasts,
   push,
   dismiss,
@@ -576,6 +597,7 @@ function FinalBody({
   judgeId: string;
   sheetId?: string;
   lifecycle: RoundLifecycle;
+  criteria: FinalCriterion[];
   toasts: ReturnType<typeof useToasts>['toasts'];
   push: ReturnType<typeof useToasts>['push'];
   dismiss: ReturnType<typeof useToasts>['dismiss'];
@@ -583,36 +605,49 @@ function FinalBody({
   // 결승 점수 입력/반영도 OPEN/LIVE 에서만 허용. 그 외 상태는 잠금.
   const submitBlocked = !isRoundInteractive(lifecycle);
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: 'idle' });
-  const draftKey = `jnj.draft.final.${judgeId}`;
+  // Cache-bust draft key with the active criteria list so toggling criteria
+  // mid-event doesn't seed stale values onto disabled inputs.
+  const draftKey = `jnj.draft.final.${judgeId}.${criteria.join(',')}`;
 
   // 결승은 useDraft 를 사용하지 않는다 — useDraft 의 mount 후 hydrate 가
-  // localStorage 의 이전 값(예: 5점) 으로 시트 시드를 덮어쓰는 race condition
-  // 때문이다. 결승은 시트가 진실의 원천이므로 contestants(시트 응답) 기반으로
-  // 직접 state 를 시드하고, 사용자 입력은 별도 effect 로 localStorage 에 백업.
+  // localStorage 의 이전 값으로 DB 시드를 덮어쓰는 race condition 때문이다.
+  // DB 가 진실의 원천이므로 contestants 응답을 직접 시드.
   function seedFromContestants(list: Contestant[]): FinalDraft {
     const o: FinalDraft = {};
     for (const c of list) {
-      const fs = c.finalScores;
-      o[c.id] = {
-        basics: fs?.basics ?? FINAL_SCORE_DEFAULT,
-        connection: fs?.connection ?? FINAL_SCORE_DEFAULT,
-        musicality: fs?.musicality ?? FINAL_SCORE_DEFAULT,
-      };
+      const fs = c.finalScores ?? {};
+      const row: Partial<Record<FinalCriterion, number | null>> = {};
+      for (const k of criteria) {
+        row[k] = fs[k] ?? FINAL_SCORE_DEFAULT;
+      }
+      o[c.id] = row;
     }
     return o;
   }
   const [draft, setDraft] = useState<FinalDraft>(() =>
     seedFromContestants(contestants),
   );
-  // contestants 가 새로 들어오면(=API 재조회 = 갱신 버튼) 무조건 시트값으로 reseed.
-  const lastContestantsRef = useRef(contestants);
+  // 휠 picker 의 90ms 디바운스로 인해 onChange 가 setState 큐에 들어가 있는
+  // 시점과 handleSubmit 실행 시점 사이의 race 를 막기 위해 ref 미러를 둔다.
+  // setTimeout 안에서 closure-bound draft 대신 ref 의 최신 값을 읽는다.
+  const draftRef = useRef(draft);
   useEffect(() => {
-    if (lastContestantsRef.current !== contestants) {
+    draftRef.current = draft;
+  }, [draft]);
+  // contestants 가 새로 들어오면 DB값으로 reseed. criteria 가 바뀌어도 reseed.
+  const lastContestantsRef = useRef(contestants);
+  const lastCriteriaRef = useRef(criteria);
+  useEffect(() => {
+    if (
+      lastContestantsRef.current !== contestants ||
+      lastCriteriaRef.current !== criteria
+    ) {
       lastContestantsRef.current = contestants;
+      lastCriteriaRef.current = criteria;
       setDraft(seedFromContestants(contestants));
     }
-  }, [contestants]);
-  // draft 변경 시 localStorage 에 백업(네트워크 오류 복구용).
+  }, [contestants, criteria]);
+  // draft 변경 시 localStorage 에 백업.
   useEffect(() => {
     try {
       window.localStorage.setItem(draftKey, JSON.stringify(draft));
@@ -628,23 +663,23 @@ function FinalBody({
     }
   }
 
+  function entryComplete(e: Partial<Record<FinalCriterion, number | null>> | undefined): boolean {
+    if (!e) return false;
+    for (const k of criteria) {
+      if (!isValidScore(e[k] ?? null)) return false;
+    }
+    return true;
+  }
+
   const validCount = useMemo(
-    () =>
-      contestants.filter((c) => {
-        const e = draft[c.id];
-        return (
-          e &&
-          isValidScore(e.basics) &&
-          isValidScore(e.connection) &&
-          isValidScore(e.musicality)
-        );
-      }).length,
-    [contestants, draft],
+    () => contestants.filter((c) => entryComplete(draft[c.id])).length,
+    [contestants, draft, criteria],
   );
   const total = contestants.length;
   const locked = submitState.kind === 'locked';
   const submitting = submitState.kind === 'submitting';
   const allValid = validCount === total && total > 0;
+  const maxTotal = FINAL_SCORE_MAX * criteria.length;
 
   function handleSubmit() {
     if (submitBlocked) {
@@ -654,37 +689,40 @@ function FinalBody({
       );
       return;
     }
-    const entries: FinalEntry[] = [];
-    for (const c of contestants) {
-      const e = draft[c.id];
-      if (
-        !e ||
-        !isValidScore(e.basics) ||
-        !isValidScore(e.connection) ||
-        !isValidScore(e.musicality)
-      ) {
-        push('error', `#${c.number} score is empty.`);
-        return;
-      }
-      entries.push({
-        contestantId: c.id,
-        basics: e.basics,
-        connection: e.connection,
-        musicality: e.musicality,
-      });
-    }
-
+    // 휠 picker 의 onScroll → onChange 가 90ms 디바운스로 settle 되므로,
+    // 스크롤 직후 즉시 Submit 을 누르면 마지막 점수 변경이 draft 에 반영되기
+    // 전에 read 가 일어날 수 있다. 150ms 양보해 pending 한 onChange 가 모두
+    // 처리된 뒤 draft 를 읽도록 한다.
     setSubmitState({ kind: 'submitting' });
-    submitRound({ judgeId, round: 'final', entries }, sheetId)
-      .then((res) => {
-        push('success', `Saved ${res.written}.`);
-        setSubmitState({ kind: 'locked' });
-        clear();
-      })
-      .catch((err) => {
-        setSubmitState({ kind: 'idle' });
-        push('error', errorMessage(err));
-      });
+    setTimeout(() => {
+      const latestDraft = draftRef.current;
+      const entries: FinalEntry[] = [];
+      for (const c of contestants) {
+        const e = latestDraft[c.id];
+        if (!entryComplete(e)) {
+          push('error', `#${c.number} score is empty.`);
+          setSubmitState({ kind: 'idle' });
+          return;
+        }
+        const entry: FinalEntry = { contestantId: c.id };
+        for (const k of criteria) {
+          const v = e![k];
+          if (typeof v === 'number') entry[k] = v;
+        }
+        entries.push(entry);
+      }
+
+      submitRound({ judgeId, round: 'final', entries }, sheetId)
+        .then((res) => {
+          push('success', `Saved ${res.written}.`);
+          setSubmitState({ kind: 'locked' });
+          clear();
+        })
+        .catch((err) => {
+          setSubmitState({ kind: 'idle' });
+          push('error', errorMessage(err));
+        });
+    }, 150);
   }
 
   return (
@@ -702,34 +740,31 @@ function FinalBody({
         }}
       >
         {contestants.map((c) => {
-          const entry =
-            draft[c.id] ?? {
-              basics: FINAL_SCORE_DEFAULT,
-              connection: FINAL_SCORE_DEFAULT,
-              musicality: FINAL_SCORE_DEFAULT,
-            };
-          const sum = totalFinalScore({
-            contestantId: c.id,
-            basics: entry.basics ?? 0,
-            connection: entry.connection ?? 0,
-            musicality: entry.musicality ?? 0,
-          });
-          const allFilled =
-            isValidScore(entry.basics) &&
-            isValidScore(entry.connection) &&
-            isValidScore(entry.musicality);
+          const entry: Partial<Record<FinalCriterion, number | null>> = draft[c.id] ?? {};
+          // For sum / totalFinalScore: build a FinalEntry over active criteria.
+          const sumEntry: FinalEntry = { contestantId: c.id };
+          for (const k of criteria) {
+            const v = entry[k];
+            if (typeof v === 'number') sumEntry[k] = v;
+          }
+          const sum = totalFinalScore(sumEntry);
+          const allFilled = entryComplete(entry);
           return (
             <li
               key={c.id}
               style={{
                 padding: 'var(--jnj-space-4)',
                 borderRadius: 'var(--jnj-radius-lg)',
-                border: '1px solid var(--jnj-grey-200)',
+                // 잠금(=반영 완료) 상태에서 카드 테두리/배경을 초록 톤으로 강조 —
+                // 휠 picker 가 디폴트 5점과 제출한 5점이 시각적으로 동일해
+                // "반영됐는지" 확인이 어렵던 문제를 해결.
+                border: `1.5px solid ${locked ? 'var(--jnj-green, #00A859)' : 'var(--jnj-grey-200)'}`,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 'var(--jnj-space-3)',
                 opacity: allFilled ? 1 : 0.85,
-                background: 'var(--jnj-white)',
+                background: locked ? 'var(--jnj-green-50, #E6F7EF)' : 'var(--jnj-white)',
+                transition: 'border-color var(--jnj-transition), background var(--jnj-transition)',
               }}
             >
               <header
@@ -774,6 +809,7 @@ function FinalBody({
                       #{c.number}
                     </span>
                     {c.role && <RoleBadge role={c.role} />}
+                    {locked && <SavedBadge />}
                   </div>
                 </div>
                 <div
@@ -781,9 +817,11 @@ function FinalBody({
                     fontFamily: 'var(--jnj-font-display)',
                     fontSize: 32,
                     lineHeight: 1,
-                    color: allFilled
-                      ? 'var(--jnj-text-primary)'
-                      : 'var(--jnj-text-disabled)',
+                    color: locked
+                      ? 'var(--jnj-green, #00A859)'
+                      : allFilled
+                        ? 'var(--jnj-text-primary)'
+                        : 'var(--jnj-text-disabled)',
                   }}
                 >
                   {allFilled ? sum : '—'}
@@ -796,57 +834,37 @@ function FinalBody({
                       color: 'var(--jnj-text-secondary)',
                     }}
                   >
-                    /{FINAL_SCORE_MAX * 3}
+                    /{maxTotal}
                   </span>
                 </div>
               </header>
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  // Up to 3 columns per row on wide screens; auto-fit keeps it
+                  // readable when N=4..6 criteria are active.
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
                   gap: 'var(--jnj-space-3)',
                 }}
               >
-                <ScoreInput
-                  label="Basics"
-                  value={entry.basics}
-                  invalid={entry.basics !== null && !isValidScore(entry.basics)}
-                  disabled={locked || submitting || submitBlocked}
-                  onChange={(n) =>
-                    setDraft((cur) => ({
-                      ...cur,
-                      [c.id]: { ...cur[c.id]!, basics: n },
-                    }))
-                  }
-                />
-                <ScoreInput
-                  label="Connection"
-                  value={entry.connection}
-                  invalid={
-                    entry.connection !== null && !isValidScore(entry.connection)
-                  }
-                  disabled={locked || submitting || submitBlocked}
-                  onChange={(n) =>
-                    setDraft((cur) => ({
-                      ...cur,
-                      [c.id]: { ...cur[c.id]!, connection: n },
-                    }))
-                  }
-                />
-                <ScoreInput
-                  label="Musicality"
-                  value={entry.musicality}
-                  invalid={
-                    entry.musicality !== null && !isValidScore(entry.musicality)
-                  }
-                  disabled={locked || submitting || submitBlocked}
-                  onChange={(n) =>
-                    setDraft((cur) => ({
-                      ...cur,
-                      [c.id]: { ...cur[c.id]!, musicality: n },
-                    }))
-                  }
-                />
+                {criteria.map((k) => {
+                  const val = entry[k] ?? null;
+                  return (
+                    <ScoreInput
+                      key={k}
+                      label={FINAL_CRITERION_LABEL[k]}
+                      value={val}
+                      invalid={val !== null && !isValidScore(val)}
+                      disabled={locked || submitting || submitBlocked}
+                      onChange={(n) =>
+                        setDraft((cur) => ({
+                          ...cur,
+                          [c.id]: { ...(cur[c.id] ?? {}), [k]: n },
+                        }))
+                      }
+                    />
+                  );
+                })}
               </div>
             </li>
           );
@@ -931,25 +949,72 @@ function ContestantAvatar({
   if (photoUrl) {
     return (
       <span style={common} aria-label={`Contestant ${number} photo`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={photoUrl}
-          alt={`#${number}`}
-          width={size}
-          height={size}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          loading="lazy"
-          onError={(e) => {
-            // Hide broken image; placeholder bg + number remain visible.
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
-        />
+        <AvatarImg url={photoUrl} number={number} size={size} />
       </span>
     );
   }
   return (
     <span style={common} aria-label={`Contestant ${number}`}>
       {number.replace(/^0+/, '') || number}
+    </span>
+  );
+}
+
+// Drive-hosted avatar. Tries lh3 (server returned this), falls back to
+// drive.google.com/thumbnail if lh3 fails (e.g. CDN throttle / referer block),
+// then gives up and hides the <img> so the parent placeholder shows.
+function AvatarImg({ url, number, size }: { url: string; number: string; size: number }) {
+  const [step, setStep] = useState(0); // 0 primary, 1 fallback, 2 hidden
+  // lh3 URL → ID extraction (the /api/db/round route already normalized Drive
+  // share URLs to https://lh3.googleusercontent.com/d/{ID}=w400).
+  const lh3Match = url.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  const driveMatch = url.match(/drive\.google\.com\/(?:file\/d\/|(?:open|uc|thumbnail)\?(?:[^#]*&)?id=)([a-zA-Z0-9_-]+)/);
+  const driveId = lh3Match?.[1] ?? driveMatch?.[1] ?? null;
+  const fallback = driveId
+    ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w${size * 2}`
+    : url;
+  if (step === 2) return null;
+  const src = step === 0 ? url : fallback;
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      key={src}
+      src={src}
+      alt={`#${number}`}
+      width={size}
+      height={size}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      onError={() => setStep((s) => s + 1)}
+    />
+  );
+}
+
+function SavedBadge() {
+  return (
+    <span
+      aria-label="Saved"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        background: 'var(--jnj-green, #00A859)',
+        color: 'var(--jnj-white)',
+        border: '1px solid var(--jnj-green, #00A859)',
+        fontFamily: 'var(--jnj-font-text-medium)',
+        fontSize: 11,
+        fontWeight: 500,
+        letterSpacing: '0.06em',
+        padding: '2px 8px',
+        borderRadius: 'var(--jnj-radius-pill)',
+        textTransform: 'uppercase',
+      }}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      Saved
     </span>
   );
 }
