@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { Card } from '../../components/Card';
 import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import { NavBar } from '../../components/NavBar';
+import { QRCodeImg } from '../../components/QRCode';
 import { setCompetition, useCompetition } from '../../hooks/useCompetition';
 import { setJudge } from '../../hooks/useJudge';
 import type { Competition, Judge } from '../../lib/sheet-schema';
@@ -153,28 +154,52 @@ function EnterPageInner() {
           />
         </div>
 
-        {competition && (
-          <span
-            className="jnj-small"
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 'var(--jnj-space-4)',
+          }}
+        >
+          <div
             style={{
-              color: 'var(--jnj-text-secondary)',
-              fontFamily: 'var(--jnj-font-text-medium)',
-              letterSpacing: '0.06em',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--jnj-space-2)',
+              flex: 1,
+              minWidth: 0,
             }}
           >
-            {competition.id} · {competition.name}
-          </span>
-        )}
+            {competition && (
+              <span
+                className="jnj-small"
+                style={{
+                  color: 'var(--jnj-text-secondary)',
+                  fontFamily: 'var(--jnj-font-text-medium)',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                {competition.id} · {competition.name}
+              </span>
+            )}
 
-        <h1
-          className="jnj-display"
-          style={{ fontSize: 'clamp(40px, 10vw, 72px)', margin: 0 }}
-        >
-          JUDGE LOGIN
-        </h1>
-        <p className="jnj-body" style={{ color: 'var(--jnj-text-secondary)', margin: 0 }}>
-          Select your name and log in.
-        </p>
+            <h1
+              className="jnj-display"
+              style={{ fontSize: 'clamp(40px, 10vw, 72px)', margin: 0 }}
+            >
+              JUDGE LOGIN
+            </h1>
+            <p
+              className="jnj-body"
+              style={{ color: 'var(--jnj-text-secondary)', margin: 0 }}
+            >
+              Select your name and log in.
+            </p>
+          </div>
+
+          {competition && <JudgeLoginQR competitionId={competition.id} />}
+        </div>
       </header>
 
       <section style={{ flex: 1 }}>
@@ -220,6 +245,126 @@ function EnterPageInner() {
         onClick={handleLogin}
       />
     </main>
+  );
+}
+
+function JudgeLoginQR({ competitionId }: { competitionId: string }) {
+  const [open, setOpen] = useState(false);
+  const judgeUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/enter?c=${encodeURIComponent(competitionId)}`
+      : `/enter?c=${encodeURIComponent(competitionId)}`;
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Show judge login QR"
+        title="Judge login QR"
+        style={{
+          appearance: 'none',
+          background: '#fff',
+          border: '1.5px solid var(--jnj-grey-300)',
+          borderRadius: 'var(--jnj-radius-lg)',
+          padding: 'var(--jnj-space-2)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <QRCodeImg value={judgeUrl} size={96} alt="Judge login QR" />
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'var(--jnj-space-5)',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              color: '#000',
+              borderRadius: 'var(--jnj-radius-lg)',
+              padding: 'var(--jnj-space-6)',
+              maxWidth: 420,
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 'var(--jnj-space-4)',
+            }}
+          >
+            <div style={{ textAlign: 'center' }}>
+              <div
+                className="jnj-small"
+                style={{ letterSpacing: '0.06em', opacity: 0.6 }}
+              >
+                {competitionId}
+              </div>
+              <div className="jnj-caption" style={{ opacity: 0.7 }}>
+                Judge login QR
+              </div>
+            </div>
+
+            <QRCodeImg value={judgeUrl} size={280} margin={2} alt="Judge login QR large" />
+
+            <div
+              style={{
+                fontSize: 12,
+                opacity: 0.7,
+                wordBreak: 'break-all',
+                textAlign: 'center',
+              }}
+            >
+              {judgeUrl}
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--jnj-space-2)' }}>
+              <button
+                type="button"
+                className="jnj-btn jnj-btn-secondary jnj-btn-sm"
+                onClick={() => {
+                  if (navigator.clipboard) navigator.clipboard.writeText(judgeUrl);
+                }}
+              >
+                Copy link
+              </button>
+              <button
+                type="button"
+                className="jnj-btn jnj-btn-primary jnj-btn-sm"
+                onClick={() => setOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
