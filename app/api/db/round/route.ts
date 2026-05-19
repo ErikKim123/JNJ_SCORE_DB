@@ -42,7 +42,7 @@ export async function GET(req: Request) {
 
   const { data: rows, error } = await sb
     .from('participants')
-    .select('id, num, team_name, representative, role, photo_url')
+    .select('id, num, team_name, representative, role, photo_url, meta')
     .eq('contest_id', contestId)
     .order('num', { ascending: true });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -105,13 +105,21 @@ export async function GET(req: Request) {
     const finalScores = round === 'final' && roundJudgeId
       ? scoresByNum.get(c.num) ?? {}
       : undefined;
+    // photo_url 컬럼이 비어 있으면 meta JSON 의 `사진원본` 키로 폴백.
+    // 기존 import 가 사진을 photo_url 로 옮기지 못해서 meta 에만 남아있는
+    // 데이터를 화면에 노출하기 위한 안전망. 향후 데이터 마이그레이션으로
+    // photo_url 을 채우면 자연스럽게 photo_url 가 우선됨.
+    const rawPhoto =
+      (c.photo_url && c.photo_url.trim()) ||
+      ((c.meta as Record<string, unknown> | null)?.['사진원본'] as string | undefined) ||
+      '';
     return {
       id: c.num, // expose participant_num as the wire ID — submit echoes it back
       number: c.num,
       name1: c.team_name ?? '',
       name2: c.representative ?? '',
       role: mapRole(c.role),
-      photoUrl: c.photo_url ? normalizePhoto(c.photo_url) : undefined,
+      photoUrl: rawPhoto ? normalizePhoto(rawPhoto) : undefined,
       outcome,
       finalScores,
     };
