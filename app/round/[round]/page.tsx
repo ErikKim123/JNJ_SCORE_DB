@@ -841,9 +841,10 @@ function FinalBody({
               <div
                 style={{
                   display: 'grid',
-                  // Up to 3 columns per row on wide screens; auto-fit keeps it
-                  // readable when N=4..6 criteria are active.
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
+                  // Balanced layout per N:
+                  //   1→1, 2→2, 3→3, 4→2×2, 5→3+2, 6→3×2, 7→4+3, 8→4×2.
+                  // Avoids the "3 + 1 orphan" look when N=4.
+                  gridTemplateColumns: `repeat(${criteriaCols(criteria.length)}, 1fr)`,
                   gap: 'var(--jnj-space-3)',
                 }}
               >
@@ -898,6 +899,15 @@ function FinalBody({
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared UI bits
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Choose grid column count so rows stay balanced for any N criteria.
+// User-specified: N=4 → 2×2, N=5 → 3+2, N=6 → 3×2. Extends naturally to 7/8.
+function criteriaCols(n: number): number {
+  if (n <= 1) return 1;
+  if (n === 2 || n === 4) return 2;
+  if (n === 3 || n === 5 || n === 6) return 3;
+  return 4;
+}
 
 function outcomeToVerdict(o: RoundStatus | null | undefined): Verdict | null {
   if (o === 'pass' || o === 'fail') return o;
