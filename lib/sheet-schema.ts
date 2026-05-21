@@ -200,15 +200,16 @@ export type PassFailEntry = {
   status: 'pass' | 'fail' | 'absent';
 };
 
-// Final-round submit payload. Each active criterion gets a 1..FINAL_SCORE_MAX
-// integer. Disabled criteria simply omit the key.
+// Final-round submit payload. Each active criterion gets a
+// FINAL_SCORE_MIN..FINAL_SCORE_MAX integer. Disabled criteria simply omit
+// the key.
 export type FinalEntry = {
   contestantId: string;
 } & Partial<Record<FinalCriterion, number>>;
 
-// Design Ref: §12 Q2 — final score range is 1..10 (operator request).
-// UI inputs read these constants; total denominator = MAX * 3.
-export const FINAL_SCORE_MIN = 1;
+// Design Ref: §12 Q2 — final score range. 0 점 입력도 허용(운영자 요청).
+// UI inputs read these constants; total denominator = MAX * 활성 기준 수.
+export const FINAL_SCORE_MIN = 0;
 export const FINAL_SCORE_MAX = 10;
 // 결승 점수 입력 기본값 — 휠 picker 가 처음 노출될 때의 시드 값.
 export const FINAL_SCORE_DEFAULT = 5;
