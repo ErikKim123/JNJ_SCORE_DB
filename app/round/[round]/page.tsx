@@ -537,14 +537,11 @@ function PassFailBody({
               <PassFailToggle
                 value={draft[c.id] ?? null}
                 status={rowStatus}
-                disabled={
-                  isAbsent ||
-                  submitting ||
-                  submitBlocked ||
-                  // Once cap reached, freeze rows that are still OFF so judge
-                  // can only flip OFF on already-ON rows to free up budget.
-                  (capExhausted && draft[c.id] !== 'pass')
-                }
+                disabled={isAbsent || submitting || submitBlocked}
+                // cap 초과는 disabled 가 아닌 handleVoteChange 의 toast 로 안내.
+                // disabled 로 막으면 Edit 모드에서 OFF→ON 클릭이 무반응이라
+                // 사용자가 "왜 안 눌리지" 라고 느낀다. 클릭은 받고 toast 로
+                // "다른 행을 먼저 OFF" 라고 알려주는 편이 직관적.
                 onChange={(next) => handleVoteChange(c, next)}
               />
             </li>

@@ -131,6 +131,10 @@ function mapRole(r: string | null): string | undefined {
   if (!r) return undefined;
   if (r === 'leader') return 'Leader';
   if (r === 'follower') return 'Follower';
+  // 헬퍼는 채점 대상이 아님 — RoundBody 의 visible 필터가
+  // `(c.role ?? '').includes('헬퍼')` 로 제외하므로 한국어 표기로 매핑.
+  if (r === 'helper_leader') return '헬퍼(리더)';
+  if (r === 'helper_follower') return '헬퍼(팔로워)';
   return undefined;
 }
 
