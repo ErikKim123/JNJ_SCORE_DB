@@ -77,6 +77,15 @@ export default function RoundPage() {
   const [voteTarget, setVoteTarget] = useState<JudgeVoteTarget>(
     judge?.voteTarget ?? 'all',
   );
+  // round 별 최대 투표수 — judges DB 가 진실의 원천. localStorage 의 옛 값이
+  // 우선되면 운영자가 cap 을 바꿔도 화면에 반영되지 않으므로 fresh fetch 로
+  // 매번 갱신한다. 초기값은 localStorage 폴백.
+  const [maxPrelimVotes, setMaxPrelimVotes] = useState<number | undefined>(
+    judge?.maxPrelimVotes,
+  );
+  const [maxSemiVotes, setMaxSemiVotes] = useState<number | undefined>(
+    judge?.maxSemiVotes,
+  );
   // Active final-round criteria for this competition. Defaults to the
   // original 3; getEvent updates this on load.
   const [finalCriteria, setFinalCriteria] = useState<FinalCriterion[]>(
@@ -104,7 +113,12 @@ export default function RoundPage() {
         }
         if (judges) {
           const me = judges.find((j) => j.id === judge.id);
-          if (me) setVoteTarget(me.voteTarget ?? 'all');
+          if (me) {
+            setVoteTarget(me.voteTarget ?? 'all');
+            // round 별 cap 도 fresh — localStorage 의 옛 값을 덮어쓴다.
+            setMaxPrelimVotes(me.maxPrelimVotes);
+            setMaxSemiVotes(me.maxSemiVotes);
+          }
         }
         setLoaded({ kind: 'ready', contestants: cs });
       })
@@ -199,8 +213,8 @@ export default function RoundPage() {
             contestants={loaded.contestants}
             judgeId={judge.id}
             sheetId={competition?.id}
-            maxPrelimVotes={judge.maxPrelimVotes}
-            maxSemiVotes={judge.maxSemiVotes}
+            maxPrelimVotes={maxPrelimVotes}
+            maxSemiVotes={maxSemiVotes}
             voteTarget={voteTarget}
             lifecycle={lifecycle}
             finalCriteria={finalCriteria}

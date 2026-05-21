@@ -30,25 +30,34 @@ export async function GET(req: Request) {
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
-  // When no round filter is given, dedupe by display_order — prefer prelim, then semi, then final.
+  // round 별로 max_votes 가 다르므로 (judges 는 round-당 row 1개) prelim/semi 를
+  // 각각 별도로 보관해 maxPrelimVotes / maxSemiVotes 에 분리해 담는다. id 는
+  // prelim row 우선(없으면 semi → final) — 다른 라우트들이 prelim id 를 받아
+  // (contest, display_order) 로 round-specific row 를 resolve 하기 때문.
   const rows = data ?? [];
-  const byOrder = new Map<number, typeof rows[number]>();
-  const priority: Record<string, number> = { prelim: 0, semi: 1, final: 2 };
+  type Row = typeof rows[number];
+  type Slot = { prelim?: Row; semi?: Row; final?: Row };
+  const byOrder = new Map<number, Slot>();
   for (const r of rows) {
-    const cur = byOrder.get(r.display_order);
-    if (!cur || (priority[r.round] ?? 9) < (priority[cur.round] ?? 9)) {
-      byOrder.set(r.display_order, r);
-    }
+    const slot = byOrder.get(r.display_order) ?? {};
+    slot[r.round as 'prelim' | 'semi' | 'final'] = r;
+    byOrder.set(r.display_order, slot);
   }
-  const deduped = Array.from(byOrder.values()).sort((a, b) => a.display_order - b.display_order);
-  const judges: Judge[] = deduped.map((j) => ({
-    id: j.id,
-    name: j.name,
-    active: true,
-    maxPrelimVotes: j.max_votes ?? undefined,
-    maxSemiVotes: j.max_votes ?? undefined,
-    voteTarget: targetRoleToVoteTarget(j.target_role),
-  }));
+  const ordered = Array.from(byOrder.entries()).sort((a, b) => a[0] - b[0]);
+  const judges: Judge[] = ordered
+    .map(([, slot]) => {
+      const head = slot.prelim ?? slot.semi ?? slot.final;
+      if (!head) return null;
+      return {
+        id: head.id,
+        name: head.name,
+        active: true,
+        maxPrelimVotes: slot.prelim?.max_votes ?? undefined,
+        maxSemiVotes: slot.semi?.max_votes ?? undefined,
+        voteTarget: targetRoleToVoteTarget(head.target_role),
+      } as Judge;
+    })
+    .filter((j): j is Judge => j !== null);
   return NextResponse.json({ ok: true, data: judges });
 }
 
