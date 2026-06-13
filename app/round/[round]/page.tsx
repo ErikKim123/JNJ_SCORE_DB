@@ -855,7 +855,10 @@ function FinalBody({
                   // Balanced layout per N:
                   //   1→1, 2→2, 3→3, 4→2×2, 5→3+2, 6→3×2, 7→4+3, 8→4×2.
                   // Avoids the "3 + 1 orphan" look when N=4.
-                  gridTemplateColumns: `repeat(${criteriaCols(criteria.length)}, 1fr)`,
+                  // minmax(0,1fr) (not 1fr) so columns can shrink below their
+                  // content's min-content — keeps the score picker from forcing
+                  // the card past its 720px max and overflowing the viewport.
+                  gridTemplateColumns: `repeat(${criteriaCols(criteria.length)}, minmax(0, 1fr))`,
                   gap: 'var(--jnj-space-3)',
                 }}
               >
