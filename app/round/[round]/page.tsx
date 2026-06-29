@@ -616,6 +616,9 @@ function FinalBody({
   // 결승 점수 입력/반영도 OPEN/LIVE 에서만 허용. 그 외 상태는 잠금.
   const submitBlocked = !isRoundInteractive(lifecycle);
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: 'idle' });
+  // SAVE(중간 저장) 진행 상태 — submitState 와 별개. SAVE 는 서버 전송 후에도
+  // 잠그지 않고 계속 수정 가능. 최종 잠금은 SUBMIT(handleSubmit) 만 수행한다.
+  const [saving, setSaving] = useState(false);
   // Cache-bust draft key with the active criteria list so toggling criteria
   // mid-event doesn't seed stale values onto disabled inputs.
   const draftKey = `jnj.draft.final.${judgeId}.${criteria.join(',')}`;
@@ -692,6 +695,57 @@ function FinalBody({
   const allValid = validCount === total && total > 0;
   const maxTotal = FINAL_SCORE_MAX * criteria.length;
 
+  // draftRef 의 최신값에서 전송용 entries 를 만든다. 비어있는 행이 있으면
+  // toast 로 알리고 null 을 반환(호출부에서 상태 롤백). SAVE/SUBMIT 공용.
+  function collectEntries(): FinalEntry[] | null {
+    const latestDraft = draftRef.current;
+    const entries: FinalEntry[] = [];
+    for (const c of contestants) {
+      const e = latestDraft[c.id];
+      if (!entryComplete(e)) {
+        push('error', `#${c.number} score is empty.`);
+        return null;
+      }
+      const entry: FinalEntry = { contestantId: c.id };
+      for (const k of criteria) {
+        const v = e![k];
+        if (typeof v === 'number') entry[k] = v;
+      }
+      entries.push(entry);
+    }
+    return entries;
+  }
+
+  // SAVE — 중간 저장. 서버에 전송하되 잠그지 않아 계속 수정·재저장 가능.
+  function handleSave() {
+    if (submitBlocked) {
+      push(
+        'error',
+        `Round is ${ROUND_LIFECYCLE_LABEL[lifecycle]} — saving is only allowed in OPEN/LIVE.`,
+      );
+      return;
+    }
+    setSaving(true);
+    // 휠/스테퍼 onChange 디바운스가 settle 되도록 150ms 양보 후 최신 draft 읽기.
+    setTimeout(() => {
+      const entries = collectEntries();
+      if (!entries) {
+        setSaving(false);
+        return;
+      }
+      submitRound({ judgeId, round: 'final', entries }, sheetId)
+        .then((res) => {
+          push('success', `Saved ${res.written}.`);
+          setSaving(false);
+        })
+        .catch((err) => {
+          setSaving(false);
+          push('error', errorMessage(err));
+        });
+    }, 150);
+  }
+
+  // SUBMIT — 최종 제출. 경고 확인 후 전송하고 영구 잠금(더 이상 수정 불가).
   function handleSubmit() {
     if (submitBlocked) {
       push(
@@ -700,32 +754,25 @@ function FinalBody({
       );
       return;
     }
+    // 최종 제출 경고 — 확인 시에만 진행. 취소하면 아무 동작 없음.
+    const confirmed = window.confirm(
+      'Submit final scores?\n\nOnce submitted, scores can no longer be edited.',
+    );
+    if (!confirmed) return;
     // 휠 picker 의 onScroll → onChange 가 90ms 디바운스로 settle 되므로,
     // 스크롤 직후 즉시 Submit 을 누르면 마지막 점수 변경이 draft 에 반영되기
     // 전에 read 가 일어날 수 있다. 150ms 양보해 pending 한 onChange 가 모두
     // 처리된 뒤 draft 를 읽도록 한다.
     setSubmitState({ kind: 'submitting' });
     setTimeout(() => {
-      const latestDraft = draftRef.current;
-      const entries: FinalEntry[] = [];
-      for (const c of contestants) {
-        const e = latestDraft[c.id];
-        if (!entryComplete(e)) {
-          push('error', `#${c.number} score is empty.`);
-          setSubmitState({ kind: 'idle' });
-          return;
-        }
-        const entry: FinalEntry = { contestantId: c.id };
-        for (const k of criteria) {
-          const v = e![k];
-          if (typeof v === 'number') entry[k] = v;
-        }
-        entries.push(entry);
+      const entries = collectEntries();
+      if (!entries) {
+        setSubmitState({ kind: 'idle' });
+        return;
       }
-
       submitRound({ judgeId, round: 'final', entries }, sheetId)
         .then((res) => {
-          push('success', `Saved ${res.written}.`);
+          push('success', `최종 제출 완료 (${res.written}).`);
           setSubmitState({ kind: 'locked' });
           clear();
         })
@@ -890,18 +937,25 @@ function FinalBody({
         primaryLabel={
           submitBlocked
             ? `Locked (${ROUND_LIFECYCLE_LABEL[lifecycle]})`
-            : submitting
-              ? 'Saving…'
-              : locked
-                ? 'Saved'
+            : locked
+              ? '제출 완료'
+              : submitting
+                ? '제출 중…'
                 : `Submit (${validCount}/${total})`
         }
+        // 최종 제출 후(locked)에는 onPrimary 를 없애 영구 잠금 — 재제출/수정 불가.
         onPrimary={locked || submitBlocked ? undefined : handleSubmit}
-        disabled={submitting || submitBlocked || (!allValid && !locked)}
+        disabled={submitting || saving || submitBlocked || locked || !allValid}
+        // SAVE — 중간 저장 버튼. 잠금/비활성 상태가 아닐 때만 노출.
         secondary={
-          locked
-            ? { label: 'Edit', onClick: () => setSubmitState({ kind: 'idle' }) }
-            : undefined
+          locked || submitBlocked
+            ? undefined
+            : {
+                label: saving ? 'Saving…' : 'SAVE',
+                onClick: handleSave,
+                disabled: saving || submitting,
+                wide: true,
+              }
         }
       />
 
@@ -1251,7 +1305,13 @@ function SubmitFooter({
   primaryLabel: string;
   onPrimary?: () => void;
   disabled: boolean;
-  secondary?: { label: string; onClick: () => void };
+  secondary?: {
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+    // wide=true 면 primary 와 폭을 나눠 갖는다(flex:1). 기본은 내용 폭(flexShrink:0).
+    wide?: boolean;
+  };
 }) {
   return (
     <div
@@ -1271,7 +1331,8 @@ function SubmitFooter({
           type="button"
           className="jnj-btn jnj-btn-secondary"
           onClick={secondary.onClick}
-          style={{ flexShrink: 0 }}
+          disabled={secondary.disabled}
+          style={secondary.wide ? { flex: 1 } : { flexShrink: 0 }}
         >
           {secondary.label}
         </button>
