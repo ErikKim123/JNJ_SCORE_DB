@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '../../../../lib/supabase';
+import { requireJudge } from '../../../../lib/judge-auth';
 import type { Event, FinalCriterion, Round, RoundLifecycle } from '../../../../lib/sheet-schema';
 import { DEFAULT_FINAL_CRITERIA, FINAL_CRITERIA } from '../../../../lib/sheet-schema';
 
@@ -14,6 +15,8 @@ export async function GET(req: Request) {
   if (!contestId) {
     return NextResponse.json({ ok: false, error: 'Missing competitionId' }, { status: 400 });
   }
+  const auth = requireJudge(req, contestId);
+  if (!auth.ok) return auth.response;
   const sb = getServiceClient();
   const { data: row, error } = await sb
     .from('contests')

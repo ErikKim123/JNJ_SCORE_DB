@@ -6,6 +6,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { logout as apiLogout } from '../lib/api-client';
 import type { JudgeVoteTarget } from '../lib/sheet-schema';
 
 const STORAGE_KEY = 'jnj.judge';
@@ -67,6 +68,9 @@ export function useJudge({
   const logout = useCallback(() => {
     clearJudge();
     setLocalJudge(null);
+    // Drop the session cookie too — clearing localStorage alone would leave
+    // the browser still authenticated to /api/db/*.
+    void apiLogout().catch(() => {});
     router.replace('/enter');
   }, [router]);
 

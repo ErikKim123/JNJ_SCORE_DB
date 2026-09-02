@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '../../../../lib/supabase';
+import { requireJudge, resolveRoundJudgeId } from '../../../../lib/judge-auth';
 import { CRITERION_COLUMN, FINAL_CRITERIA } from '../../../../lib/sheet-schema';
 import type { Contestant, FinalCriterion, Round, RoundStatus } from '../../../../lib/sheet-schema';
 
@@ -7,23 +8,24 @@ export const dynamic = 'force-dynamic';
 
 const VALID_ROUNDS = new Set<Round>(['prelim', 'semi', 'final']);
 
-// Reads contestants for a round.
+// Reads contestants for a round, seeded with the signed-in judge's own prior
+// marks. Which judge that is comes from the session cookie — a judgeId query
+// param used to be enough to read anyone's scorecard.
 //   prelim → all participants
 //   semi   → qualifiers where round='prelim' and passed=true
 //   final  → qualifiers where round='semi' and passed=true
-// When `judgeId` is provided, also seeds the contestant's `outcome` from the
-// judge's prior vote_mark in judge_votes (prelim/semi) or final scores.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const round = url.searchParams.get('round') as Round | null;
   const contestId = url.searchParams.get('competitionId') || url.searchParams.get('sheetId');
-  const judgeId = url.searchParams.get('judgeId') || undefined;
   if (!round || !VALID_ROUNDS.has(round)) {
     return NextResponse.json({ ok: false, error: 'Invalid round' }, { status: 400 });
   }
   if (!contestId) {
     return NextResponse.json({ ok: false, error: 'Missing competitionId' }, { status: 400 });
   }
+  const auth = requireJudge(req, contestId);
+  if (!auth.ok) return auth.response;
   const sb = getServiceClient();
 
   // 1) Eligible participants
@@ -48,27 +50,8 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   const participants = (rows ?? []).filter((r) => !eligibleNums || eligibleNums.has(r.num));
 
-  // 2) If judgeId provided, resolve to the round-specific judges.id (the UI's
-  //    judgeId is the prelim-row UUID from /api/db/judges; we look up the
-  //    matching display_order for the requested round).
-  let roundJudgeId: string | null = null;
-  if (judgeId) {
-    const { data: jrow } = await sb
-      .from('judges')
-      .select('contest_id, display_order')
-      .eq('id', judgeId)
-      .maybeSingle();
-    if (jrow) {
-      const { data: rj } = await sb
-        .from('judges')
-        .select('id')
-        .eq('contest_id', jrow.contest_id)
-        .eq('display_order', jrow.display_order)
-        .eq('round', round)
-        .maybeSingle();
-      roundJudgeId = rj?.id ?? null;
-    }
-  }
+  // 2) This judge's row for the requested round (null when they have none).
+  const roundJudgeId = await resolveRoundJudgeId(auth.session, round);
 
   // 3) Pull this judge's votes (vote_mark for prelim/semi, scores for final)
   const voteMarkByNum = new Map<string, string>();
@@ -99,7 +82,7 @@ export async function GET(req: Request) {
 
   const out: Contestant[] = participants.map((c) => {
     let outcome: RoundStatus = roundJudgeId ? 'fail' : 'ready';
-    if (judgeId && (round === 'prelim' || round === 'semi')) {
+    if (roundJudgeId && (round === 'prelim' || round === 'semi')) {
       outcome = voteMarkByNum.get(c.num) === 'O' ? 'pass' : 'fail';
     }
     const finalScores = round === 'final' && roundJudgeId

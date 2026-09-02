@@ -8,6 +8,7 @@ import { NavBar } from '../../components/NavBar';
 import { QRCodeImg } from '../../components/QRCode';
 import { setCompetition, useCompetition } from '../../hooks/useCompetition';
 import { setJudge } from '../../hooks/useJudge';
+import { login } from '../../lib/api-client';
 import type { Competition, Judge } from '../../lib/sheet-schema';
 
 type LoadState =
@@ -34,6 +35,9 @@ function EnterPageInner() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // If arrived via QR (?c=JNJ-001), look up the competition and persist it
   // into localStorage so the rest of the flow keeps working unchanged.
@@ -107,18 +111,32 @@ function EnterPageInner() {
     };
   }, [hydrated, competition, reloadKey]);
 
-  function handleLogin() {
-    if (!selectedId || state.kind !== 'ready') return;
+  async function handleLogin() {
+    if (!selectedId || state.kind !== 'ready' || !competition || submitting) return;
     const judge = state.judges.find((j) => j.id === selectedId);
     if (!judge) return;
-    setJudge({
-      id: judge.id,
-      name: judge.name,
-      maxPrelimVotes: judge.maxPrelimVotes,
-      maxSemiVotes: judge.maxSemiVotes,
-      voteTarget: judge.voteTarget,
-    });
-    router.push('/event');
+    if (!/^\d{4}$/.test(pin)) {
+      setPinError('Enter your 4-digit PIN.');
+      return;
+    }
+    setSubmitting(true);
+    setPinError(null);
+    try {
+      // The cookie this sets is what authorises every later call; localStorage
+      // only carries display data for the UI.
+      await login(competition.id, judge.id, pin);
+      setJudge({
+        id: judge.id,
+        name: judge.name,
+        maxPrelimVotes: judge.maxPrelimVotes,
+        maxSemiVotes: judge.maxSemiVotes,
+        voteTarget: judge.voteTarget,
+      });
+      router.push('/event');
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : 'Login failed.');
+      setSubmitting(false);
+    }
   }
 
   if (!hydrated || qrSyncing) {
@@ -241,7 +259,14 @@ function EnterPageInner() {
       </section>
 
       <LoginFooter
-        disabled={!selectedId || state.kind !== 'ready'}
+        disabled={!selectedId || state.kind !== 'ready' || submitting}
+        pin={pin}
+        onPinChange={(v) => {
+          setPin(v);
+          if (pinError) setPinError(null);
+        }}
+        error={pinError}
+        submitting={submitting}
         onClick={handleLogin}
       />
     </main>
@@ -370,9 +395,17 @@ function JudgeLoginQR({ competitionId }: { competitionId: string }) {
 
 function LoginFooter({
   disabled,
+  pin,
+  onPinChange,
+  error,
+  submitting,
   onClick,
 }: {
   disabled: boolean;
+  pin: string;
+  onPinChange: (v: string) => void;
+  error: string | null;
+  submitting: boolean;
   onClick: () => void;
 }) {
   return (
@@ -386,18 +419,63 @@ function LoginFooter({
         background: 'var(--jnj-white)',
         boxShadow: '0px -1px 0px 0px var(--jnj-grey-200) inset',
         display: 'flex',
+        flexDirection: 'column',
         gap: 'var(--jnj-space-2)',
       }}
     >
-      <button
-        type="button"
-        className="jnj-btn jnj-btn-primary"
-        disabled={disabled}
-        onClick={onClick}
-        style={{ flex: 1, padding: 'var(--jnj-space-3) var(--jnj-space-5)' }}
+      <p
+        className="jnj-caption"
+        style={{ margin: 0, color: 'var(--jnj-text-secondary)' }}
       >
-        Log in
-      </button>
+        First time? The PIN you enter now becomes yours.
+      </p>
+
+      <div style={{ display: 'flex', gap: 'var(--jnj-space-2)' }}>
+        <input
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          pattern="\d{4}"
+          maxLength={4}
+          value={pin}
+          onChange={(e) => onPinChange(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !disabled) onClick();
+          }}
+          placeholder="PIN"
+          aria-label="4-digit PIN"
+          aria-invalid={Boolean(error)}
+          style={{
+            width: 120,
+            padding: 'var(--jnj-space-3) var(--jnj-space-4)',
+            borderRadius: 'var(--jnj-radius-lg)',
+            border: `1.5px solid ${error ? 'var(--jnj-red)' : 'var(--jnj-grey-300)'}`,
+            fontSize: 20,
+            letterSpacing: '0.4em',
+            textAlign: 'center',
+            minWidth: 0,
+          }}
+        />
+        <button
+          type="button"
+          className="jnj-btn jnj-btn-primary"
+          disabled={disabled}
+          onClick={onClick}
+          style={{ flex: 1, padding: 'var(--jnj-space-3) var(--jnj-space-5)' }}
+        >
+          {submitting ? 'Logging in…' : 'Log in'}
+        </button>
+      </div>
+
+      {error && (
+        <p
+          role="alert"
+          className="jnj-caption"
+          style={{ margin: 0, color: 'var(--jnj-red)' }}
+        >
+          {error}
+        </p>
+      )}
     </div>
   );
 }

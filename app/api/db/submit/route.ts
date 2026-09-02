@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '../../../../lib/supabase';
+import { requireJudge, resolveRoundJudgeId } from '../../../../lib/judge-auth';
 import { CRITERION_COLUMN, FINAL_CRITERIA } from '../../../../lib/sheet-schema';
 import type { FinalCriterion, Round, SubmitPayload } from '../../../../lib/sheet-schema';
 
@@ -9,8 +10,9 @@ export const dynamic = 'force-dynamic';
 //   prelim/semi → set vote_mark ('O' / 'X')
 //   final       → set per-criterion score columns (basic_score / connectivity_score / ...)
 //
-// The UI's judgeId is the prelim-row UUID returned by /api/db/judges. We
-// resolve to the round-specific judges.id before writing.
+// Whose votes these are comes from the session cookie alone. Any judgeId in
+// the body is ignored — trusting it was how anyone could overwrite anyone's
+// scores.
 export async function POST(req: Request) {
   let body: SubmitPayload & { competitionId?: string; sheetId?: string };
   try {
@@ -19,10 +21,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
   const contestId = body.competitionId || body.sheetId;
-  const { judgeId, round, entries } = body;
-  if (!contestId || !judgeId || !round || !Array.isArray(entries)) {
+  const { round, entries } = body;
+  if (!contestId || !round || !Array.isArray(entries)) {
     return NextResponse.json({ ok: false, error: 'Missing required fields' }, { status: 400 });
   }
+  const auth = requireJudge(req, contestId);
+  if (!auth.ok) return auth.response;
   if (round !== 'prelim' && round !== 'semi' && round !== 'final') {
     return NextResponse.json({ ok: false, error: 'Invalid round' }, { status: 400 });
   }
@@ -32,30 +36,10 @@ export async function POST(req: Request) {
 
   const sb = getServiceClient();
 
-  // Resolve judgeId → the round-specific judges.id (same display_order, different round).
-  const { data: jOriginal, error: jErr } = await sb
-    .from('judges')
-    .select('contest_id, display_order')
-    .eq('id', judgeId)
-    .maybeSingle();
-  if (jErr || !jOriginal) {
-    return NextResponse.json({ ok: false, error: 'Judge not found' }, { status: 404 });
-  }
-  if (jOriginal.contest_id !== contestId) {
-    return NextResponse.json({ ok: false, error: 'Judge does not belong to this competition' }, { status: 400 });
-  }
-  const { data: jRound, error: jrErr } = await sb
-    .from('judges')
-    .select('id')
-    .eq('contest_id', contestId)
-    .eq('display_order', jOriginal.display_order)
-    .eq('round', round)
-    .maybeSingle();
-  if (jrErr) return NextResponse.json({ ok: false, error: jrErr.message }, { status: 500 });
-  if (!jRound) {
+  const targetJudgeId = await resolveRoundJudgeId(auth.session, round);
+  if (!targetJudgeId) {
     return NextResponse.json({ ok: false, error: `Judge has no ${round} record` }, { status: 404 });
   }
-  const targetJudgeId = jRound.id;
 
   let written = 0;
 
