@@ -63,7 +63,7 @@ export default function RoundPage() {
 
   if (!ROUNDS.includes(round)) notFound();
 
-  const { judge, hydrated } = useJudge({ requireJudge: true });
+  const { judge, hydrated, logout } = useJudge({ requireJudge: true });
   const { competition, hydrated: compHydrated } = useCompetition({
     requireSelection: true,
   });
@@ -98,7 +98,7 @@ export default function RoundPage() {
     let cancelled = false;
     setLoaded({ kind: 'loading' });
     Promise.all([
-      getRound(round, competition?.id, judge?.id),
+      getRound(round, competition?.id),
       // 라운드 상태도 함께 갱신해, 운영자가 시트에서 'Close'로 바꾸면 즉시 반영.
       getEvent(competition?.id).catch(() => null),
       // 본인의 `대상` 컬럼을 fresh 하게 — legacy localStorage 호환 + 시트
@@ -124,12 +124,18 @@ export default function RoundPage() {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        // Session gone (expired, or the PIN was re-claimed elsewhere) — clear
+        // the stale local judge and send them back to log in.
+        if (err instanceof AppsScriptError && err.code === 'UNAUTHORIZED') {
+          logout();
+          return;
+        }
         setLoaded({ kind: 'error', message: errorMessage(err) });
       });
     return () => {
       cancelled = true;
     };
-  }, [hydrated, compHydrated, judge, round, competition?.id, reloadKey]);
+  }, [hydrated, compHydrated, judge, round, competition?.id, reloadKey, logout]);
 
   return (
     <main
